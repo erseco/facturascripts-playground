@@ -66,7 +66,7 @@ node "$SCRIPT_DIR/generate-manifest.mjs" \
   --runtimeVersion "$RUNTIME_VERSION" \
   --release "$RELEASE" \
   --sourceRepository "${FS_REF:-https://github.com/erseco/facturascripts.git}" \
-  --sourceBranch "${FS_REF_BRANCH:-copilot/add-sqlite-support}" \
+  --sourceBranch "${FS_REF_BRANCH:-feature/add-sqlite-support}" \
   --sourceCommit "$SOURCE_COMMIT" \
   --imageData "$VFS_DATA_PATH" \
   --imageIndex "$VFS_INDEX_PATH" \

@@ -129,7 +129,7 @@ El bundle readonly se construye con [scripts/build-facturascripts-bundle.sh](scr
 Por defecto usa:
 
 - repo fuente: `https://github.com/erseco/facturascripts.git`
-- rama: `copilot/add-sqlite-support`
+- rama: `feature/add-sqlite-support`
 
 Durante el build:
 

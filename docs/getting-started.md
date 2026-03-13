@@ -84,7 +84,7 @@ FS_REF=https://github.com/<org>/facturascripts.git FS_REF_BRANCH=<branch> make b
 Por defecto el proyecto usa:
 
 - `FS_REF=https://github.com/erseco/facturascripts.git`
-- `FS_REF_BRANCH=copilot/add-sqlite-support`
+- `FS_REF_BRANCH=feature/add-sqlite-support`
 
 ## Previsualizar la documentacion
 

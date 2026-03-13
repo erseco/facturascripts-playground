@@ -1,6 +1,6 @@
 PORT ?= 8085
 FS_REF ?= https://github.com/erseco/facturascripts.git
-FS_REF_BRANCH ?= copilot/add-sqlite-support
+FS_REF_BRANCH ?= feature/add-sqlite-support
 
 # Basic usage:
 #   make help      Show the available targets and common overrides

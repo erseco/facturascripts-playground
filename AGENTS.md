@@ -115,7 +115,7 @@ Relevant files:
 Default build source:
 
 - `FS_REF=https://github.com/erseco/facturascripts.git`
-- `FS_REF_BRANCH=copilot/add-sqlite-support`
+- `FS_REF_BRANCH=feature/add-sqlite-support`
 
 If you change bundle structure, update manifest generation and runtime loading together.
 
