@@ -1,6 +1,7 @@
 {
   "name": "facturascripts-playground",
   "private": true,
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
     "prepare-runtime": "node ./scripts/prepare-runtime.mjs",
