@@ -15,8 +15,7 @@ if [ ! -d "$CLONE_DIR/.git" ]; then
   git clone --depth 1 --branch "$REF_BRANCH" "$REF_URL" "$CLONE_DIR" >&2
 else
   git -C "$CLONE_DIR" fetch --depth 1 origin "$REF_BRANCH" >&2
-  git -C "$CLONE_DIR" checkout "$REF_BRANCH" >&2
-  git -C "$CLONE_DIR" reset --hard "origin/$REF_BRANCH" >&2
+  git -C "$CLONE_DIR" checkout -B "$REF_BRANCH" FETCH_HEAD >&2
 fi
 
 printf '%s\n' "$CLONE_DIR"

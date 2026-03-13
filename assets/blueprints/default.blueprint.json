@@ -18,5 +18,10 @@
     "username": "admin",
     "password": "admin"
   },
-  "plugins": []
+  "plugins": [],
+  "seed": {
+    "customers": [],
+    "suppliers": [],
+    "products": []
+  }
 }

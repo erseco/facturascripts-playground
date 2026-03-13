@@ -7,6 +7,20 @@
   "timezone": "Europe/Madrid",
   "autologin": true,
   "resetOnVersionMismatch": true,
+  "outboundHttp": {
+    "enabled": true,
+    "allowedHosts": [
+      "facturascripts.com"
+    ],
+    "allowedMethods": [
+      "GET",
+      "HEAD"
+    ],
+    "proxyPath": "/__addon_proxy__",
+    "proxyUrl": "https://zip-proxy.erseco.workers.dev/",
+    "timeoutMs": 15000,
+    "maxBytes": 52428800
+  },
   "admin": {
     "username": "admin",
     "password": "admin",

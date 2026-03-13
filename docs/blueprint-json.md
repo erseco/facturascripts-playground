@@ -8,6 +8,10 @@ El archivo por defecto es:
 
 `assets/blueprints/default.blueprint.json`
 
+Ejemplo completo del repositorio:
+
+`blueprint-sample.json`
+
 La implementacion real esta en:
 
 - esquema: `assets/blueprints/blueprint-schema.json`
@@ -21,8 +25,8 @@ Actualmente el runtime usa el blueprint para:
 - activar o no el modo debug con `debug.enabled`
 - fijar `title`, `locale` y `timezone` efectivos
 - sobreescribir el usuario y password del login inicial
-
-El array `plugins` ya se valida y normaliza, pero todavia no ejecuta instalacion automatica en el arranque.
+- instalar y activar plugins declarados en `plugins`
+- sembrar clientes, proveedores y productos declarados en `seed`
 
 ## Estructura soportada
 
@@ -34,7 +38,8 @@ El array `plugins` ya se valida y normaliza, pero todavia no ejecuta instalacion
 | `landingPage` | Ruta de entrada | Se normaliza para empezar por `/` |
 | `siteOptions` | Ajustes de la instancia | `title`, `locale`, `timezone` |
 | `login` | Credenciales efectivas | `username`, `password` |
-| `plugins` | Declaracion de plugins | Sin materializacion automatica todavia |
+| `plugins` | Declaracion de plugins | Cada entrada puede ser nombre de plugin o URL a ZIP |
+| `seed` | Datos demo idempotentes | MVP: `customers`, `suppliers`, `products` |
 
 ## Ejemplo valido
 
@@ -61,14 +66,32 @@ El array `plugins` ya se valida y normaliza, pero todavia no ejecuta instalacion
   },
   "plugins": [
     "MiPlugin",
-    {
-      "name": "OtroPlugin",
-      "source": {
-        "type": "url",
-        "url": "https://example.com/OtroPlugin.zip"
+    "https://facturascripts.com/DownloadBuild/440/stable"
+  ],
+  "seed": {
+    "customers": [
+      {
+        "codcliente": "CDEMO1",
+        "nombre": "Cliente Demo",
+        "cifnif": "12345678Z",
+        "email": "cliente@example.com"
       }
-    }
-  ]
+    ],
+    "suppliers": [
+      {
+        "codproveedor": "PDEMO1",
+        "nombre": "Proveedor Demo",
+        "cifnif": "B12345678"
+      }
+    ],
+    "products": [
+      {
+        "referencia": "SKU-DEMO-001",
+        "descripcion": "Producto demo",
+        "precio": 19.95
+      }
+    ]
+  }
 }
 ```
 
@@ -80,31 +103,184 @@ Puedes aportar un blueprint de tres formas:
 - `?blueprint-data=...` con JSON codificado en base64url
 - importando el JSON desde la shell
 
+## Como agregar plugins
+
+Hay dos formas soportadas en el MVP:
+
+### 1. Plugin ya presente en el runtime
+
+Si el plugin ya existe en la carpeta `Plugins` del runtime, basta con indicar su nombre:
+
+```json
+{
+  "plugins": [
+    "MiPlugin"
+  ]
+}
+```
+
+En este caso el playground intentara activarlo durante el arranque.
+
+### 2. Plugin remoto por URL
+
+Si quieres descargar e instalar un plugin remoto, indica la URL directa al ZIP o al `DownloadBuild`:
+
+```json
+{
+  "plugins": [
+    "https://facturascripts.com/plugins/commandpalette"
+  ]
+}
+```
+
+Si la URL apunta a una ficha de plugin de FacturaScripts, el playground resuelve automaticamente el enlace `DownloadBuild` y descarga el ZIP correspondiente.
+
+Esto es lo que usa el ejemplo [blueprint-sample.json](/Users/ernesto/Dropbox/Trabajo/git/facturascripts/facturascripts-playground/blueprint-sample.json) para instalar CommandPalette.
+
+Consejos practicos:
+
+- usa una URL directa al artefacto descargable, no la ficha HTML del plugin
+- si estas en local, la descarga pasa por `/__addon_proxy__`
+- si el host remoto no esta en `outboundHttp.allowedHosts`, la instalacion fallara con un error claro
+
+## Como agregar datos demo
+
+La seccion `seed` permite crear o actualizar datos basicos del entorno demo:
+
+- `customers`
+- `suppliers`
+- `products`
+
+El comportamiento es idempotente:
+
+- si el registro no existe, se crea
+- si ya existe con la misma clave natural, se actualiza
+- al recargar el scope no se duplican registros
+
+### Clientes
+
+La clave obligatoria es `codcliente`:
+
+```json
+{
+  "seed": {
+    "customers": [
+      {
+        "codcliente": "CDEMO1",
+        "nombre": "Cliente Demo",
+        "cifnif": "12345678Z",
+        "email": "cliente@example.com",
+        "telefono1": "+34910000001",
+        "direccion": "Calle Demo 1",
+        "ciudad": "Madrid",
+        "provincia": "Madrid",
+        "codpais": "ESP"
+      }
+    ]
+  }
+}
+```
+
+### Proveedores
+
+La clave obligatoria es `codproveedor`:
+
+```json
+{
+  "seed": {
+    "suppliers": [
+      {
+        "codproveedor": "PDEMO1",
+        "nombre": "Proveedor Demo",
+        "cifnif": "B12345678",
+        "email": "proveedor@example.com"
+      }
+    ]
+  }
+}
+```
+
+### Productos
+
+La clave obligatoria es `referencia`:
+
+```json
+{
+  "seed": {
+    "products": [
+      {
+        "referencia": "SKU-DEMO-001",
+        "descripcion": "Producto demo",
+        "precio": 19.95,
+        "stockfis": 25
+      }
+    ]
+  }
+}
+```
+
+### Ejemplo combinado
+
+```json
+{
+  "plugins": [
+    "https://facturascripts.com/plugins/commandpalette"
+  ],
+  "seed": {
+    "customers": [
+      {
+        "codcliente": "CDEMO1",
+        "nombre": "Cliente Demo"
+      }
+    ],
+    "suppliers": [
+      {
+        "codproveedor": "PDEMO1",
+        "nombre": "Proveedor Demo"
+      }
+    ],
+    "products": [
+      {
+        "referencia": "SKU-DEMO-001",
+        "descripcion": "Producto demo",
+        "precio": 19.95
+      }
+    ]
+  }
+}
+```
+
+Campos recomendados:
+
+- clientes y proveedores: `nombre`, `cifnif`, `email`, `telefono1`, `direccion`, `ciudad`, `provincia`, `codpais`
+- productos: `descripcion`, `precio`, `stockfis`, `codfamilia`, `codimpuesto`
+
 ## Reglas y convenciones del proyecto
 
 - `landingPage` siempre se normaliza a una ruta absoluta interna.
 - `login.username` y `login.password` sobreescriben el admin del runtime.
-- `plugins` no admite nombres duplicados.
-- los nombres de plugin deben ser un unico segmento de ruta
-- `plugins[].source.type` soporta `bundled` y `url`
-- las URLs de plugins se absolutizan contra la URL actual
+- `plugins` no admite duplicados.
+- si un plugin es un nombre, debe ser un unico segmento de ruta.
+- si un plugin es una URL `http` o `https`, se descarga como ZIP y se intenta activar.
+- los plugins por nombre solo cubren plugins ya presentes en el runtime.
+- `seed.customers[].codcliente`, `seed.suppliers[].codproveedor` y `seed.products[].referencia` son obligatorios.
+- el seed hace upsert por esas claves naturales para no duplicar datos en recargas.
+- las URLs de plugins remotos estan sujetas a la politica `outboundHttp` del playground.
+- en desarrollo local las descargas pasan por `/__addon_proxy__`; en despliegue estatico usan el proxy configurado.
 
-## Que no hace todavia
+## Limitaciones del MVP
 
-El runtime actual no descarga ni instala plugins remotos a partir de `plugins`. Esa parte esta pendiente en `src/runtime/addons.js`.
-
-Por tanto, usa `plugins` hoy como:
-
-- configuracion declarativa prevista
-- metadato util para futuras integraciones
-- reflejo de plugins que ya vengan empaquetados en el bundle
+- El seed todavia no crea facturas, impuestos, series, almacenes ni stock avanzado.
+- Los plugins por URL dependen de `outboundHttp.allowedHosts`.
+- La activacion usa las APIs internas de FacturaScripts y puede fallar si el plugin tiene dependencias no satisfechas.
+- El blueprint no instala automaticamente plugins de marketplace a partir de un slug suelto; para descargas remotas usa una URL directa al ZIP o la URL de la ficha publica del plugin en FacturaScripts.
 
 ## Como validar cambios
 
 1. edita el JSON
 2. comprueba que sigue el schema de `assets/blueprints/blueprint-schema.json`
 3. importa el blueprint o arranca con un scope limpio
-4. verifica login, locale, timezone, titulo y landing page
+4. verifica login, locale, timezone, titulo, plugins y seed
 5. si algo falla, activa `debug.enabled`
 
 Checks utiles:
@@ -112,4 +288,5 @@ Checks utiles:
 ```bash
 node --check src/shared/blueprint.js
 node --check src/runtime/bootstrap.js
+node --check src/runtime/addons.js
 ```

@@ -49,13 +49,19 @@
       "type": "array",
       "items": {
         "oneOf": [
-          { "type": "string" },
+          {
+            "type": "string",
+            "minLength": 1
+          },
           {
             "type": "object",
             "additionalProperties": false,
-            "required": ["name"],
             "properties": {
               "name": { "type": "string" },
+              "state": {
+                "type": "string",
+                "enum": ["install", "activate"]
+              },
               "source": {
                 "oneOf": [
                   {
@@ -80,6 +86,89 @@
           }
         ]
       }
+    },
+    "seed": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "customers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["codcliente"],
+            "properties": {
+              "codcliente": { "type": "string" },
+              "nombre": { "type": "string" },
+              "razonsocial": { "type": "string" },
+              "cifnif": { "type": "string" },
+              "email": { "type": "string" },
+              "telefono1": { "type": "string" },
+              "telefono2": { "type": "string" },
+              "direccion": { "type": "string" },
+              "apartado": { "type": "string" },
+              "codpostal": { "type": "string" },
+              "ciudad": { "type": "string" },
+              "provincia": { "type": "string" },
+              "codpais": { "type": "string" },
+              "observaciones": { "type": "string" },
+              "web": { "type": "string" }
+            },
+            "additionalProperties": true
+          }
+        },
+        "suppliers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["codproveedor"],
+            "properties": {
+              "codproveedor": { "type": "string" },
+              "nombre": { "type": "string" },
+              "razonsocial": { "type": "string" },
+              "cifnif": { "type": "string" },
+              "email": { "type": "string" },
+              "telefono1": { "type": "string" },
+              "telefono2": { "type": "string" },
+              "direccion": { "type": "string" },
+              "apartado": { "type": "string" },
+              "codpostal": { "type": "string" },
+              "ciudad": { "type": "string" },
+              "provincia": { "type": "string" },
+              "codpais": { "type": "string" },
+              "observaciones": { "type": "string" },
+              "web": { "type": "string" }
+            },
+            "additionalProperties": true
+          }
+        },
+        "products": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["referencia"],
+            "properties": {
+              "referencia": { "type": "string" },
+              "descripcion": { "type": "string" },
+              "precio": { "type": "number" },
+              "observaciones": { "type": "string" },
+              "codfamilia": { "type": "string" },
+              "codfabricante": { "type": "string" },
+              "codimpuesto": { "type": "string" },
+              "excepcioniva": { "type": "string" },
+              "sevende": { "type": "boolean" },
+              "secompra": { "type": "boolean" },
+              "nostock": { "type": "boolean" },
+              "publico": { "type": "boolean" },
+              "ventasinstock": { "type": "boolean" },
+              "stockfis": { "type": "number" }
+            },
+            "additionalProperties": true
+          }
+        }
+      }
+    },
+    "settings": {
+      "type": "object"
     }
   }
 }
