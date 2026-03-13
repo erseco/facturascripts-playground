@@ -1,0 +1,52 @@
+[  172009ms] [WARNING] Status: 500 Internal Server Error
+X-Powered-By: PHP/8.3.11
+Content-type: text/html; charset=UTF-8
+
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>🚨 Error abb2be45b66536694df374d6bc76c6d4</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-rbsA2VBKQhggwzxH7pPCaAqO46MgnOM80zW1RWuH61DGLwZJEdK2Kadq2F9CUG65" crossorigin="anonymous"></head><body style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh;"><div class="container mt-5 mb-5"><div class="row justify-content-center"><div class="col-sm-12"><h1 class="h3 text-white mb-4">🚨 Error abb2be45b66536694df374d6bc76c6d4</h1><div class="card shadow mb-4"><div class="card-body"><img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https%3A%2F%2Ffacturascripts.com%2Ferrores%2Fabb2be45b66536694df374d6bc76c6d4" alt="abb2be45b66536694df374d6bc76c6d4" class="float-end"><p>Uncaught Error: Undefined constant &quot;FacturaScripts\Core\CURLOPT_AUTOREFERER&quot; in /Core/Http.php:66<br />
+</p><p class="mb-0"><b>Url</b>: /Dashboard</p></div><div class="card-footer p-2"><div class="row"><div class="col"><form method="post" action="https://facturascripts.com/errores/abb2be45b66536694df374d6bc76c6d4" target="_blank"><input type="hidden" name="error_code" value="1"><input type="hidden" name="error_message" value="Uncaught Error: Undefined constant &quot;FacturaScripts\Core\CURLOPT_AUTOREFERER&quot; in /Core/Http.php:66
+
+Stack trace:
+#0 /Core/Http.php(104): FacturaScripts\Core\Http-&gt;__construct(&#39;GET&#39;, &#39;https://factura...&#39;, Array)
+#1 /Core/Controller/Dashboard.php(221): FacturaScripts\Core\Http::get(&#39;https://factura...&#39;)
+#2 /Core/Cache.php(140): FacturaScripts\Core\Controller\Dashboard-&gt;FacturaScripts\Core\Controller\{closure}()
+#3 /Core/Controller/Dashboard.php(220): FacturaScripts\Core\Cache::remember(&#39;dashboard-news&#39;, Object(Closure))
+#4 /Core/Controller/Dashboard.php(189): FacturaScripts\Core\Controller\Dashboard-&gt;loadNews()
+#5 /Core/Controller/Dashboard.php(103): FacturaScripts\Core\Controller\Dashboard-&gt;loadExtensions()
+#6 /Core/Base/Controller.php(290): FacturaScripts\Core\Controller\Dashboard-&gt;privateCore(Object(FacturaScripts\Core\Response), Object(FacturaScripts\Dinamic\Model\User), Object(FacturaScripts\Core\Base\ControllerPermissions))
+#7 /Core/Kernel.php(457): FacturaScripts\Core\Base\Controller-&gt;run()
+#8 /Core/Kernel.php(198): FacturaScripts\Core\Kernel::runController(&#39;/Dashboard&#39;)
+#9 /index.php(64): FacturaScripts\Core\Kernel::run(&#39;/Dashboard&#39;)
+#10 {main}
+  thrown"><input type="hidden" name="error_file" value="/Core/Http.php"><input type="hidden" name="error_line" value="66"><input type="hidden" name="error_hash" value="abb2be45b66536694df374d6bc76c6d4"><input type="hidden" name="error_url" value="/Dashboard"><input type="hidden" name="error_core_version" value="2026"><input type="hidden" name="error_plugin_list" value=""><input type="hidden" name="error_php_version" value="8.3.11"><input type="hidden" name="error_os" value="Linux"><button type="submit" class="btn btn-secondary">Enviar informe</button></form></div><div class="col-auto"><a href="/deploy?action=disable-plugins&token=353d35c1f44642778b2165885d8b7cab" class="btn btn-outline-secondary">Desactivar plugins</a> </div><div class="col-auto"><a href="/deploy?action=rebuild&token=353d35c1f44642778b2165885d8b7cab" class="btn btn-outline-secondary">Reconstruir</a> </div></div></div></div></div></div></div></body></html> @ http://127.0.0.1:8085/vendor/php-cgi-wasm/PhpCgiBase.js:700
+[  172009ms] [ERROR]  @ http://127.0.0.1:8085/vendor/php-cgi-wasm/PhpCgiBase.js:701
+[  172011ms] [ERROR] Failed to load resource: the server responded with a status of 500 () @ http://127.0.0.1:8085/playground/cf31e8d2-75c2-416e-8fae-7ec773503680/php83-cgi/Dashboard:0
+[  467403ms] [WARNING] Status: 500 Internal Server Error
+X-Powered-By: PHP/8.3.11
+Content-type: text/html; charset=UTF-8
+
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>🚨 Error abb2be45b66536694df374d6bc76c6d4</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-rbsA2VBKQhggwzxH7pPCaAqO46MgnOM80zW1RWuH61DGLwZJEdK2Kadq2F9CUG65" crossorigin="anonymous"></head><body style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh;"><div class="container mt-5 mb-5"><div class="row justify-content-center"><div class="col-sm-12"><h1 class="h3 text-white mb-4">🚨 Error abb2be45b66536694df374d6bc76c6d4</h1><div class="card shadow mb-4"><div class="card-body"><img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https%3A%2F%2Ffacturascripts.com%2Ferrores%2Fabb2be45b66536694df374d6bc76c6d4" alt="abb2be45b66536694df374d6bc76c6d4" class="float-end"><p>Uncaught Error: Undefined constant &quot;FacturaScripts\Core\CURLOPT_AUTOREFERER&quot; in /Core/Http.php:66<br />
+</p><p class="mb-0"><b>Url</b>: /Dashboard</p></div><div class="card-footer p-2"><div class="row"><div class="col"><form method="post" action="https://facturascripts.com/errores/abb2be45b66536694df374d6bc76c6d4" target="_blank"><input type="hidden" name="error_code" value="1"><input type="hidden" name="error_message" value="Uncaught Error: Undefined constant &quot;FacturaScripts\Core\CURLOPT_AUTOREFERER&quot; in /Core/Http.php:66
+
+Stack trace:
+#0 /Core/Http.php(104): FacturaScripts\Core\Http-&gt;__construct(&#39;GET&#39;, &#39;https://factura...&#39;, Array)
+#1 /Core/Controller/Dashboard.php(221): FacturaScripts\Core\Http::get(&#39;https://factura...&#39;)
+#2 /Core/Cache.php(140): FacturaScripts\Core\Controller\Dashboard-&gt;FacturaScripts\Core\Controller\{closure}()
+#3 /Core/Controller/Dashboard.php(220): FacturaScripts\Core\Cache::remember(&#39;dashboard-news&#39;, Object(Closure))
+#4 /Core/Controller/Dashboard.php(189): FacturaScripts\Core\Controller\Dashboard-&gt;loadNews()
+#5 /Core/Controller/Dashboard.php(103): FacturaScripts\Core\Controller\Dashboard-&gt;loadExtensions()
+#6 /Core/Base/Controller.php(290): FacturaScripts\Core\Controller\Dashboard-&gt;privateCore(Object(FacturaScripts\Core\Response), Object(FacturaScripts\Dinamic\Model\User), Object(FacturaScripts\Core\Base\ControllerPermissions))
+#7 /Core/Kernel.php(457): FacturaScripts\Core\Base\Controller-&gt;run()
+#8 /Core/Kernel.php(198): FacturaScripts\Core\Kernel::runController(&#39;/Dashboard&#39;)
+#9 /index.php(64): FacturaScripts\Core\Kernel::run(&#39;/Dashboard&#39;)
+#10 {main}
+  thrown"><input type="hidden" name="error_file" value="/Core/Http.php"><input type="hidden" name="error_line" value="66"><input type="hidden" name="error_hash" value="abb2be45b66536694df374d6bc76c6d4"><input type="hidden" name="error_url" value="/Dashboard"><input type="hidden" name="error_core_version" value="2026"><input type="hidden" name="error_plugin_list" value=""><input type="hidden" name="error_php_version" value="8.3.11"><input type="hidden" name="error_os" value="Linux"><button type="submit" class="btn btn-secondary">Enviar informe</button></form></div><div class="col-auto"><a href="/deploy?action=disable-plugins&token=25304daa7eaa750d3cc2e005d1f12dc8" class="btn btn-outline-secondary">Desactivar plugins</a> </div><div class="col-auto"><a href="/deploy?action=rebuild&token=25304daa7eaa750d3cc2e005d1f12dc8" class="btn btn-outline-secondary">Reconstruir</a> </div></div></div></div></div></div></div></body></html> @ http://127.0.0.1:8085/vendor/php-cgi-wasm/PhpCgiBase.js:700
+[  467404ms] [ERROR]  @ http://127.0.0.1:8085/vendor/php-cgi-wasm/PhpCgiBase.js:701
+[  467408ms] [ERROR] Failed to load resource: the server responded with a status of 500 () @ http://127.0.0.1:8085/playground/cf31e8d2-75c2-416e-8fae-7ec773503680/php83-cgi/Dashboard:0
+[ 1021878ms] [WARNING] X-Powered-By: PHP/8.3.11
+Content-type: text/html; charset=UTF-8
+
+<br />
+<b>Parse error</b>:  syntax error, unexpected token &quot;\&quot; in <b>/www/facturascripts/config.php</b> on line <b>26</b><br />
+ @ http://127.0.0.1:8085/vendor/php-cgi-wasm/PhpCgiBase.js:700
+[ 1021879ms] [ERROR]  @ http://127.0.0.1:8085/vendor/php-cgi-wasm/PhpCgiBase.js:701
+[ 1021886ms] [ERROR] Failed to load resource: the server responded with a status of 500 () @ http://127.0.0.1:8085/playground/cf31e8d2-75c2-416e-8fae-7ec773503680/php83-cgi/Dashboard:0
