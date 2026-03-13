@@ -10,7 +10,9 @@
   "outboundHttp": {
     "enabled": true,
     "allowedHosts": [
-      "facturascripts.com"
+      "facturascripts.com",
+      "github.com",
+      "codeload.github.com"
     ],
     "allowedMethods": [
       "GET",

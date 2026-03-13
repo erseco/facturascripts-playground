@@ -120,6 +120,55 @@ function isFacturaScriptsPluginPageUrl(value) {
   }
 }
 
+function buildGitHubArchiveUrl(sourceUrl) {
+  let url;
+  try {
+    url = new URL(String(sourceUrl || ""));
+  } catch {
+    return null;
+  }
+
+  if (url.hostname !== "github.com" && url.hostname !== "www.github.com") {
+    return null;
+  }
+
+  const parts = url.pathname.split("/").filter(Boolean);
+  if (parts.length < 2) {
+    return null;
+  }
+
+  const [owner, repo, kind, ...rest] = parts;
+  const cleanRepo = repo.replace(/\.git$/iu, "");
+  const repoBase = `https://github.com/${owner}/${cleanRepo}`;
+
+  if (!kind) {
+    return null;
+  }
+
+  if (kind === "archive") {
+    return sourceUrl;
+  }
+
+  if (kind === "tree" && rest.length > 0) {
+    const branch = rest.join("/");
+    return `${repoBase}/archive/refs/heads/${branch}.zip`;
+  }
+
+  if (kind === "pull" && rest.length > 0) {
+    const pullNumber = rest[0];
+    if (!/^\d+$/u.test(pullNumber)) {
+      return null;
+    }
+    return `https://codeload.github.com/${owner}/${cleanRepo}/zip/refs/pull/${pullNumber}/head`;
+  }
+
+  if (kind === "releases" && rest[0] === "download" && rest.length >= 2) {
+    return sourceUrl;
+  }
+
+  return null;
+}
+
 function extractFacturaScriptsDownloadUrl(html, sourceUrl) {
   const match = String(html || "").match(/href=["']([^"']*\/DownloadBuild\/\d+\/(?:stable|beta)[^"']*)["']/iu);
   if (!match?.[1]) {
@@ -129,6 +178,11 @@ function extractFacturaScriptsDownloadUrl(html, sourceUrl) {
 }
 
 async function resolvePluginDownloadUrl(sourceUrl, label) {
+  const githubArchiveUrl = buildGitHubArchiveUrl(sourceUrl);
+  if (githubArchiveUrl) {
+    return githubArchiveUrl;
+  }
+
   if (!isFacturaScriptsPluginPageUrl(sourceUrl)) {
     return sourceUrl;
   }

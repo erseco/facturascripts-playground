@@ -151,6 +151,17 @@ Instalar un plugin remoto desde FacturaScripts:
 }
 ```
 
+Instalar un plugin desde GitHub para probar una rama o un PR:
+
+```json
+{
+  "plugins": [
+    "https://github.com/<owner>/<repo>/tree/<branch>",
+    "https://github.com/<owner>/<repo>/pull/123"
+  ]
+}
+```
+
 Crear datos demo idempotentes:
 
 ```json

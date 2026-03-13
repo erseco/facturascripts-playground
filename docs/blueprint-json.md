@@ -143,6 +143,25 @@ Consejos practicos:
 - si estas en local, la descarga pasa por `/__addon_proxy__`
 - si el host remoto no esta en `outboundHttp.allowedHosts`, la instalacion fallara con un error claro
 
+### 3. Plugin desde GitHub para probar ramas o PRs
+
+Tambien puedes usar URLs de GitHub y el playground las convertira a un ZIP descargable:
+
+```json
+{
+  "plugins": [
+    "https://github.com/<owner>/<repo>/tree/<branch>",
+    "https://github.com/<owner>/<repo>/pull/123"
+  ]
+}
+```
+
+Reglas soportadas:
+
+- `.../tree/<branch>` -> descarga el ZIP de esa rama
+- `.../pull/<numero>` -> descarga el ZIP de la cabeza del PR
+- `.../archive/...` y `.../releases/download/...` -> se usan tal cual
+
 ## Como agregar datos demo
 
 La seccion `seed` permite crear o actualizar datos basicos del entorno demo:
