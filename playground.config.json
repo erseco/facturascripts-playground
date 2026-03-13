@@ -1,0 +1,61 @@
+{
+  "bundleVersion": "0.1.0",
+  "defaultBlueprintUrl": "./assets/blueprints/default.blueprint.json",
+  "addonProxyPath": "/__addon_proxy__",
+  "addonProxyUrl": "https://zip-proxy.erseco.workers.dev/",
+  "outboundHttp": {
+    "enabled": true,
+    "allowedHosts": [
+      "localhost",
+      "127.0.0.1",
+      "omeka.org",
+      "raw.githubusercontent.com",
+      "github.com",
+      "codeload.github.com",
+      "zip-proxy.erseco.workers.dev"
+    ],
+    "allowedMethods": [
+      "GET",
+      "HEAD"
+    ],
+    "proxyAllCrossOrigin": true,
+    "timeoutMs": 15000,
+    "maxBytes": 1048576,
+    "probeUrl": "https://omeka.org/add-ons/json/s_module.json"
+  },
+  "siteTitle": "Omeka S Playground",
+  "landingPath": "/admin",
+  "locale": "en_US",
+  "timezone": "UTC",
+  "autologin": true,
+  "resetOnVersionMismatch": true,
+  "admin": {
+    "username": "admin",
+    "password": "password",
+    "email": "admin@example.com"
+  },
+  "runtimes": [
+    {
+      "id": "php83-cgi",
+      "label": "PHP 8.3 CGI",
+      "phpVersionLabel": "8.3",
+      "assetBase": "./vendor",
+      "cgiWasmPath": "./vendor/php-cgi-wasm",
+      "sharedLibs": [
+        "dom",
+        "gd",
+        "iconv",
+        "intl",
+        "libxml",
+        "sqlite",
+        "simplexml",
+        "zlib",
+        "zip",
+        "mbstring",
+        "openssl",
+        "phar"
+      ],
+      "default": true
+    }
+  ]
+}
