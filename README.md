@@ -104,7 +104,8 @@ El blueprint permite definir:
 - `landingPage`: pagina de aterrizaje dentro de FacturaScripts.
 - `siteOptions.title`, `siteOptions.locale`, `siteOptions.timezone`: valores efectivos de la instancia.
 - `login.username`, `login.password`: credenciales que se aplican al arranque.
-- `plugins`: listado declarativo de plugins.
+- `plugins`: listado declarativo de plugins por nombre, URL de ficha o URL ZIP.
+- `seed`: datos demo idempotentes para clientes, proveedores y productos.
 
 Se puede cargar un blueprint de tres formas:
 
@@ -112,15 +113,73 @@ Se puede cargar un blueprint de tres formas:
 - `?blueprint-data=...` con JSON codificado en base64url
 - importando JSON desde el panel lateral de la shell
 
-## Estado actual del soporte de plugins
+Ejemplo listo para usar:
 
-El esquema ya admite `plugins`, pero la materializacion automatica todavia no esta implementada en el runtime. A dia de hoy:
+- [blueprint-sample.json](blueprint-sample.json): instala CommandPalette y crea cliente, proveedor y producto demo
 
-- el core de FacturaScripts se empaqueta dentro del bundle readonly
-- los plugins que ya formen parte del arbol empaquetado estaran disponibles
-- el flujo de descarga e instalacion automatica de plugins remotos sigue pendiente
+## Soporte de plugins y seed
+
+El runtime materializa el blueprint despues de la instalacion inicial de FacturaScripts:
+
+- si `plugins[]` contiene un nombre, intenta activarlo desde el runtime actual
+- si `plugins[]` contiene una URL `http` o `https`, resuelve el ZIP cuando hace falta, lo instala y lo activa
+- `seed` hace upsert de `customers`, `suppliers` y `products` para evitar duplicados al recargar
+- el estado aplicado del blueprint se persiste en `/persist/mutable/config/blueprint-state.json`
+- las descargas remotas usan `/__addon_proxy__` en local y `zip-proxy.erseco.workers.dev` en despliegues estaticos
 
 Referencia tecnica: [src/runtime/addons.js](src/runtime/addons.js)
+
+## Ejemplos de uso
+
+Activar un plugin ya presente en el runtime:
+
+```json
+{
+  "plugins": [
+    "MiPlugin"
+  ]
+}
+```
+
+Instalar un plugin remoto desde FacturaScripts:
+
+```json
+{
+  "plugins": [
+    "https://facturascripts.com/plugins/commandpalette"
+  ]
+}
+```
+
+Crear datos demo idempotentes:
+
+```json
+{
+  "seed": {
+    "customers": [
+      {
+        "codcliente": "CDEMO1",
+        "nombre": "Cliente Demo"
+      }
+    ],
+    "suppliers": [
+      {
+        "codproveedor": "PDEMO1",
+        "nombre": "Proveedor Demo"
+      }
+    ],
+    "products": [
+      {
+        "referencia": "SKU-DEMO-001",
+        "descripcion": "Producto demo",
+        "precio": 19.95
+      }
+    ]
+  }
+}
+```
+
+Referencia completa: [docs/blueprint-json.md](docs/blueprint-json.md)
 
 ## Bundle de FacturaScripts
 
@@ -153,7 +212,7 @@ Durante el build:
 
 - La compatibilidad esta enfocada sobre todo a navegadores Chromium.
 - El almacenamiento persistente depende de IndexedDB y Service Workers.
-- El soporte declarativo para `plugins` aun no realiza descarga ni instalacion remota.
+- Las descargas remotas de plugins dependen de `outboundHttp.allowedHosts`.
 - Si cambias el bundle o el service worker, puede hacer falta un hard refresh o limpiar el scope.
 
 ## Licencia

@@ -77,6 +77,11 @@ function normalizePath(path, fallback = "/") {
   return path.startsWith("/") ? path : `/${path}`;
 }
 
+function isHttpUrl(value) {
+  const text = String(value || "").trim();
+  return /^https?:\/\//iu.test(text);
+}
+
 function normalizePluginSource(input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     return { type: "bundled" };
@@ -110,27 +115,110 @@ function normalizePluginCollection(input) {
 
   const seen = new Set();
   return input.map((entry) => {
+    if (typeof entry === "string") {
+      const text = entry.trim();
+      if (!text) {
+        return null;
+      }
+
+      const isUrl = isHttpUrl(text);
+      const normalized = isUrl
+        ? {
+          name: "",
+          source: {
+            type: "url",
+            url: absolutizeUrl(text),
+          },
+          state: "activate",
+        }
+        : {
+          name: text,
+          source: { type: "bundled" },
+          state: "activate",
+        };
+
+      if (!isUrl && (/[\\/]/u.test(normalized.name) || normalized.name === "." || normalized.name === "..")) {
+        throw new Error(`Blueprint plugin name "${normalized.name}" must be a single path segment.`);
+      }
+
+      const dedupeKey = isUrl
+        ? `url:${normalized.source.url.toLowerCase()}`
+        : `name:${normalized.name.toLowerCase()}`;
+      if (seen.has(dedupeKey)) {
+        throw new Error(`Blueprint plugins cannot include duplicate entry "${normalized.name}".`);
+      }
+      seen.add(dedupeKey);
+      return normalized;
+    }
+
+    const source = normalizePluginSource(entry?.source);
     const normalized = {
-      name: String(entry?.name || entry || "").trim(),
-      source: normalizePluginSource(entry?.source),
+      name: String(entry?.name || "").trim(),
+      source,
+      state: entry?.state === "install" ? "install" : "activate",
     };
 
-    if (!normalized.name) {
+    if (!normalized.name && source.type !== "url") {
       return null;
     }
 
-    if (/[\\/]/u.test(normalized.name) || normalized.name === "." || normalized.name === "..") {
+    if (normalized.name && (/[\\/]/u.test(normalized.name) || normalized.name === "." || normalized.name === "..")) {
       throw new Error(`Blueprint plugin name "${normalized.name}" must be a single path segment.`);
     }
 
-    const dedupeKey = normalized.name.toLowerCase();
+    const dedupeKey = normalized.name
+      ? `name:${normalized.name.toLowerCase()}`
+      : `url:${normalized.source.url.toLowerCase()}`;
     if (seen.has(dedupeKey)) {
-      throw new Error(`Blueprint plugins cannot include duplicate entry "${normalized.name}".`);
+      throw new Error(`Blueprint plugins cannot include duplicate entry "${normalized.name || normalized.source.url}".`);
     }
     seen.add(dedupeKey);
 
     return normalized;
   }).filter(Boolean);
+}
+
+function normalizeSeedCollection(input, primaryKey) {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  const seen = new Set();
+  return input.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error(`Blueprint seed.${primaryKey} entries must be objects.`);
+    }
+
+    const normalized = structuredClone(entry);
+    const key = String(normalized[primaryKey] || "").trim();
+    if (!key) {
+      throw new Error(`Blueprint seed entry requires "${primaryKey}".`);
+    }
+
+    normalized[primaryKey] = key;
+    const dedupeKey = key.toLowerCase();
+    if (seen.has(dedupeKey)) {
+      throw new Error(`Blueprint seed cannot include duplicate ${primaryKey} "${key}".`);
+    }
+    seen.add(dedupeKey);
+    return normalized;
+  });
+}
+
+function normalizeSeed(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return {
+      customers: [],
+      suppliers: [],
+      products: [],
+    };
+  }
+
+  return {
+    customers: normalizeSeedCollection(input.customers, "codcliente"),
+    suppliers: normalizeSeedCollection(input.suppliers, "codproveedor"),
+    products: normalizeSeedCollection(input.products, "referencia"),
+  };
 }
 
 export function getBlueprintSchemaUrl() {
@@ -159,6 +247,11 @@ export function buildDefaultBlueprint(config) {
       password: config.admin.password,
     },
     plugins: [],
+    seed: {
+      customers: [],
+      suppliers: [],
+      products: [],
+    },
   };
 }
 
@@ -189,6 +282,7 @@ export function normalizeBlueprint(input, config) {
       password: blueprint.login?.password || fallback.login.password,
     },
     plugins: normalizePluginCollection(blueprint.plugins),
+    seed: normalizeSeed(blueprint.seed),
   };
 }
 

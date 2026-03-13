@@ -60,10 +60,10 @@ export default {
       );
     }
 
-    if (!looksLikeZipUrl(parsedTargetUrl)) {
+    if (!looksLikeZipUrl(parsedTargetUrl) && !isFacturaScriptsPluginPage(parsedTargetUrl)) {
       return jsonResponse(
         {
-          error: "The provided URL does not look like a ZIP download.",
+          error: "The provided URL is not a supported plugin page or ZIP download.",
         },
         400,
       );
@@ -96,10 +96,10 @@ export default {
 
       headers.set(
         "Content-Type",
-        headers.get("Content-Type") || "application/zip",
+        headers.get("Content-Type") || (looksLikeZipUrl(parsedTargetUrl) ? "application/zip" : "text/html; charset=utf-8"),
       );
 
-      if (!headers.get("Content-Disposition")) {
+      if (!headers.get("Content-Disposition") && looksLikeZipUrl(parsedTargetUrl)) {
         headers.set(
           "Content-Disposition",
           `attachment; filename="${buildZipFilename(parsedTargetUrl)}"`,
@@ -114,7 +114,7 @@ export default {
     } catch (error) {
       return jsonResponse(
         {
-          error: "Failed to fetch remote ZIP file.",
+          error: "Failed to fetch remote plugin resource.",
           details: error.message,
         },
         502,
@@ -171,7 +171,16 @@ function looksLikeZipUrl(url) {
     return true;
   }
 
+  if (/\/downloadbuild\/\d+\/(stable|beta)$/u.test(pathname)) {
+    return true;
+  }
+
   return false;
+}
+
+function isFacturaScriptsPluginPage(url) {
+  return url.hostname.toLowerCase() === "facturascripts.com"
+    && /^\/plugins\/[^/]+\/?$/u.test(url.pathname);
 }
 
 function buildZipFilename(url) {

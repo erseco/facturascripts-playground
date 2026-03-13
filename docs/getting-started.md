@@ -66,8 +66,21 @@ El blueprint por defecto afina el comportamiento de una sesion concreta:
 - `login.username`
 - `login.password`
 - `plugins`
+- `seed`
 
 El runtime normaliza este contenido en `src/shared/blueprint.js`.
+
+Ejemplo util del repositorio:
+
+- `blueprint-sample.json`: instala CommandPalette y crea datos demo basicos
+
+Casos comunes:
+
+- activar un plugin ya presente: añade su nombre a `plugins`
+- instalar un plugin remoto: añade la URL directa al ZIP o `DownloadBuild`
+- crear datos demo: usa `seed.customers`, `seed.suppliers` y `seed.products`
+
+Consulta la referencia completa en `docs/blueprint-json.md`.
 
 ## Reconstruir el bundle
 

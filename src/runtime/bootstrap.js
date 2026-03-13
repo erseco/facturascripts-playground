@@ -1,4 +1,5 @@
 import { buildEffectivePlaygroundConfig, normalizeBlueprint } from "../shared/blueprint.js";
+import { materializeBlueprintAddons } from "./addons.js";
 import { fetchManifest, buildManifestState } from "./manifest.js";
 import { mountReadonlyCore } from "./vfs.js";
 
@@ -644,6 +645,15 @@ export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: ra
   } else {
     publish("Persistent database matches current version. Skipping table creation.", 0.70);
   }
+
+  await materializeBlueprintAddons({
+    php,
+    blueprint,
+    fsRoot: FS_ROOT,
+    publish,
+    config,
+    manifestVersion,
+  });
 
   let readyPath = blueprint.landingPage || config.landingPath || "/";
 
