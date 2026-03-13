@@ -7,12 +7,22 @@ docs_dir: docs
 site_dir: site
 theme:
   name: material
+  palette:
+    - scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
 nav:
   - Home: index.md
   - Getting started: getting-started.md
   - Playground model: wordpress-playground.md
   - blueprint.json: blueprint-json.md
   - Development: development.md
+  - GitHub Action PR Preview: github-action-pr-preview.md
 markdown_extensions:
   - admonition
   - tables

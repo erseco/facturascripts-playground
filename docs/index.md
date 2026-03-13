@@ -14,6 +14,7 @@ Usa esta documentacion para:
 - [Getting started](getting-started.md)
 - [Modelo inspirado en WordPress Playground](wordpress-playground.md)
 - [Referencia de blueprint.json](blueprint-json.md)
+- [GitHub Action PR Preview](github-action-pr-preview.md)
 - [Development](development.md)
 
 ## Que hace este proyecto
