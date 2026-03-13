@@ -1,188 +1,115 @@
 # `blueprint.json`
 
-## What it is
+## Que es
 
-In this repository, `blueprint.json` is the portable description of the initial Omeka S state that should exist inside a playground scope.
+En este repositorio, `blueprint.json` es la descripcion portable de la configuracion inicial que debe aplicar FacturaScripts Playground dentro de un scope del navegador.
 
-The default file is:
+El archivo por defecto es:
 
 `assets/blueprints/default.blueprint.json`
 
-It is inspired by WordPress Playground blueprints, but it is **not** the upstream WordPress schema. The authoritative implementation for this project is:
+La implementacion real esta en:
 
-- schema: `assets/blueprints/blueprint-schema.json`
-- normalization logic: `src/shared/blueprint.js`
+- esquema: `assets/blueprints/blueprint-schema.json`
+- normalizacion: `src/shared/blueprint.js`
 
-## How the repository uses it
+## Que aplica hoy el runtime
 
-The shell loads a blueprint, normalizes missing values, and stores the active version for the current scope. The runtime then consumes that normalized blueprint during boot to:
+Actualmente el runtime usa el blueprint para:
 
-- set install metadata such as title, locale, and timezone
-- create and authenticate the primary admin account
-- create additional users
-- install or activate modules and themes
-- create item sets, items, and media
-- create a default public site
-- choose the landing page after boot
+- elegir la ruta inicial con `landingPage`
+- activar o no el modo debug con `debug.enabled`
+- fijar `title`, `locale` y `timezone` efectivos
+- sobreescribir el usuario y password del login inicial
 
-Because the blueprint influences first-boot behavior, a small JSON change can alter installation, login, routing, or demo content.
+El array `plugins` ya se valida y normaliza, pero todavia no ejecuta instalacion automatica en el arranque.
 
-## Structure used by this project
+## Estructura soportada
 
-The most important top-level properties are:
-
-| Property | Purpose | Notes |
+| Propiedad | Uso | Notas |
 | --- | --- | --- |
-| `$schema` | Editor/schema reference | Point at the repository schema when possible |
-| `meta` | Human-readable metadata | Good place for title, author, and description |
-| `preferredVersions` | Informational runtime targets | Useful for intent, not a strict installer lockfile |
-| `debug.enabled` | Enables development-style diagnostics | Helpful for install/debug sessions |
-| `landingPage` | Initial post-boot path | Should usually begin with `/` |
-| `siteOptions` | Install-wide defaults | Title, locale, timezone |
-| `login` | Credentials used by autologin | Usually mirror the first user |
-| `users` | Omeka users to create | First user becomes the effective admin source |
-| `themes` | Themes to install | Supports bundled, URL, and `omeka.org` sources |
-| `modules` | Modules to install or activate | Module names must stay unique |
-| `itemSets` | Collections created before items | Referenced by item titles later |
-| `items` | Sample resources and media | Media currently uses URL sources |
-| `site` | Default public site | Optional but recommended for demos |
+| `$schema` | Referencia de schema | Opcional pero recomendable |
+| `meta` | Metadatos descriptivos | `title`, `author`, `description` |
+| `debug.enabled` | Errores PHP visibles | Util para diagnostico |
+| `landingPage` | Ruta de entrada | Se normaliza para empezar por `/` |
+| `siteOptions` | Ajustes de la instancia | `title`, `locale`, `timezone` |
+| `login` | Credenciales efectivas | `username`, `password` |
+| `plugins` | Declaracion de plugins | Sin materializacion automatica todavia |
 
-## Example
+## Ejemplo valido
 
 ```json
 {
   "$schema": "./assets/blueprints/blueprint-schema.json",
   "meta": {
-    "title": "Demo classroom blueprint",
-    "author": "ateeducacion",
-    "description": "Creates a reusable demo site with sample media."
+    "title": "Demo FacturaScripts",
+    "author": "equipo-dev",
+    "description": "Configuracion base para pruebas locales."
   },
   "debug": {
-    "enabled": false
+    "enabled": true
   },
-  "landingPage": "/admin",
+  "landingPage": "/",
   "siteOptions": {
-    "title": "Classroom Demo",
-    "locale": "es",
-    "timezone": "Atlantic/Canary"
+    "title": "FacturaScripts Demo",
+    "locale": "es_ES",
+    "timezone": "Europe/Madrid"
   },
   "login": {
-    "email": "admin@example.com",
-    "password": "password"
+    "username": "admin",
+    "password": "admin"
   },
-  "users": [
+  "plugins": [
+    "MiPlugin",
     {
-      "username": "admin",
-      "email": "admin@example.com",
-      "password": "password",
-      "role": "global_admin"
+      "name": "OtroPlugin",
+      "source": {
+        "type": "url",
+        "url": "https://example.com/OtroPlugin.zip"
+      }
     }
-  ],
-  "themes": [
-    {
-      "name": "Foundation",
-      "source": { "type": "omeka.org", "slug": "foundation-s" }
-    }
-  ],
-  "modules": [
-    { "name": "CSVImport", "state": "activate" }
-  ],
-  "itemSets": [
-    { "title": "Playground Collection" }
-  ],
-  "items": [
-    {
-      "title": "Openverse Sample Image",
-      "itemSets": ["Playground Collection"],
-      "media": [
-        {
-          "type": "url",
-          "url": "./assets/samples/playground-sample.png",
-          "title": "Playground sample image"
-        }
-      ]
-    }
-  ],
-  "site": {
-    "title": "Demo Site",
-    "slug": "demo-site",
-    "theme": "Foundation",
-    "setAsDefault": true
-  }
+  ]
 }
 ```
 
-## How to write and maintain it well
+## Como cargarlo
 
-### Keep it readable
+Puedes aportar un blueprint de tres formas:
 
-- Prefer one clear responsibility per section.
-- Keep related values grouped together instead of scattering overrides.
-- Use descriptive `meta.title` and `meta.description` values so future contributors understand intent immediately.
+- `?blueprint=/ruta/al/archivo.json`
+- `?blueprint-data=...` con JSON codificado en base64url
+- importando el JSON desde la shell
 
-### Keep it stable
+## Reglas y convenciones del proyecto
 
-- Prefer bundled addons or known-good `omeka.org` slugs before remote ZIP URLs.
-- Avoid duplicate module or theme names; `src/shared/blueprint.js` rejects duplicates.
-- Keep `landingPage` simple and explicit. `/admin` is the safest default for contributor-oriented blueprints.
+- `landingPage` siempre se normaliza a una ruta absoluta interna.
+- `login.username` y `login.password` sobreescriben el admin del runtime.
+- `plugins` no admite nombres duplicados.
+- los nombres de plugin deben ser un unico segmento de ruta
+- `plugins[].source.type` soporta `bundled` y `url`
+- las URLs de plugins se absolutizan contra la URL actual
 
-### Keep it maintainable
+## Que no hace todavia
 
-- Treat the first user as the canonical admin account because normalization uses it to derive effective admin config.
-- Keep `login` aligned with the first user unless you have a strong reason not to.
-- Use a small number of representative sample items instead of large demo datasets that slow down resets and reviews.
-- Prefer relative media URLs for repository-bundled samples when possible.
+El runtime actual no descarga ni instala plugins remotos a partir de `plugins`. Esa parte esta pendiente en `src/runtime/addons.js`.
 
-## Project-specific rules and conventions
+Por tanto, usa `plugins` hoy como:
 
-These conventions come from the current implementation, not generic JSON style advice:
+- configuracion declarativa prevista
+- metadato util para futuras integraciones
+- reflejo de plugins que ya vengan empaquetados en el bundle
 
-- `landingPage` is normalized to start with `/`.
-- User roles such as `admin` and `supervisor` are normalized to Omeka roles like `global_admin` and `site_admin`.
-- Addon names must be a single path segment; slashes and traversal-like names are rejected.
-- Remote addon URLs are absolutized against the current page URL.
-- `modules[].state` currently supports `install` and `activate`.
-- `items[].media[].type` currently supports `url`.
+## Como validar cambios
 
-If you change the semantics of any of those rules, update both the schema and the documentation together.
+1. edita el JSON
+2. comprueba que sigue el schema de `assets/blueprints/blueprint-schema.json`
+3. importa el blueprint o arranca con un scope limpio
+4. verifica login, locale, timezone, titulo y landing page
+5. si algo falla, activa `debug.enabled`
 
-## How to validate changes
-
-1. Edit the blueprint JSON.
-2. Compare it with `assets/blueprints/blueprint-schema.json`.
-3. Start the app and trigger a clean boot by importing the blueprint or using a new scope.
-4. Confirm the expected landing page, users, modules, themes, and sample content appear.
-5. If something fails during boot, temporarily enable `debug.enabled`.
-
-Useful targeted checks:
+Checks utiles:
 
 ```bash
 node --check src/shared/blueprint.js
 node --check src/runtime/bootstrap.js
 ```
-
-## Common mistakes to avoid
-
-- **Using the upstream WordPress Playground schema as if it were identical.** This repository implements its own Omeka-specific blueprint format.
-- **Adding hidden assumptions to runtime code instead of the blueprint.** That makes the setup harder to reason about.
-- **Leaving `login` out of sync with the first user.** Autologin can become confusing.
-- **Using fragile remote ZIP URLs.** If the URL needs unusual redirects or post-install steps, it may not work in-browser.
-- **Overloading the blueprint with too much sample content.** Large initial datasets slow resets and make review harder.
-
-## Troubleshooting
-
-### The playground boots but lands on the wrong page
-
-Check `landingPage`, current shell session state, and whether autologin bypassed a saved `/login` path.
-
-### A module or theme does not install
-
-Verify the addon `name`, the `source` definition, and whether the remote host is compatible with the configured proxy and outbound HTTP policy.
-
-### Media fails to load
-
-Confirm the URL resolves correctly from the deployed base path or local dev server. Relative sample paths are resolved against the current page URL.
-
-### A blueprint import appears to do nothing
-
-The shell only applies imported data after parsing and normalization. Check the browser console, shell logs, and whether the payload is valid JSON/base64url for `blueprint-data`.

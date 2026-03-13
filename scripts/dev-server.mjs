@@ -8,7 +8,6 @@ import { fileURLToPath } from "node:url";
 
 const repoDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const port = Number(process.env.PORT || process.argv[2] || 8080);
-const proxyPath = "/__addon_proxy__";
 
 const MIME_TYPES = {
   ".bin": "application/octet-stream",
@@ -81,67 +80,8 @@ async function serveStatic(req, res, url) {
   createReadStream(resolvedPath).pipe(res);
 }
 
-async function proxyAddon(req, res, url) {
-  const remoteUrl = url.searchParams.get("url") || "";
-  let target;
-
-  try {
-    target = new URL(remoteUrl);
-  } catch {
-    send(res, 400, "Invalid url", { "content-type": "text/plain; charset=utf-8" });
-    return;
-  }
-
-  if (!["http:", "https:"].includes(target.protocol)) {
-    send(res, 400, "Unsupported protocol", { "content-type": "text/plain; charset=utf-8" });
-    return;
-  }
-
-  log(`proxy ${target.toString()}`);
-
-  let upstream;
-  try {
-    upstream = await fetch(target, {
-      redirect: "follow",
-      headers: {
-        "user-agent": "omeka-s-playground-dev-server",
-      },
-    });
-  } catch (error) {
-    send(res, 502, String(error?.message || error), { "content-type": "text/plain; charset=utf-8" });
-    return;
-  }
-
-  if (!upstream.ok) {
-    const body = await upstream.text().catch(() => upstream.statusText);
-    send(res, upstream.status, body || upstream.statusText, {
-      "content-type": upstream.headers.get("content-type") || "text/plain; charset=utf-8",
-    });
-    return;
-  }
-
-  const headers = {
-    "access-control-allow-origin": "*",
-    "cache-control": "no-store",
-    "content-type": upstream.headers.get("content-type") || "application/octet-stream",
-  };
-  const disposition = upstream.headers.get("content-disposition");
-  if (disposition) {
-    headers["content-disposition"] = disposition;
-  }
-
-  const bytes = Buffer.from(await upstream.arrayBuffer());
-  headers["content-length"] = String(bytes.length);
-  send(res, 200, bytes, headers);
-}
-
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host || `127.0.0.1:${port}`}`);
-
-  if (req.method === "GET" && url.pathname === proxyPath) {
-    await proxyAddon(req, res, url);
-    return;
-  }
 
   if (req.method !== "GET" && req.method !== "HEAD") {
     send(res, 405, "Method not allowed", { "content-type": "text/plain; charset=utf-8" });
@@ -152,6 +92,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(port, "127.0.0.1", () => {
-  log(`Omeka playground dev server listening on http://127.0.0.1:${port}`);
-  log(`Addon proxy available at http://127.0.0.1:${port}${proxyPath}?url=<encoded-url>`);
+  log(`FacturaScripts playground dev server listening on http://127.0.0.1:${port}`);
 });

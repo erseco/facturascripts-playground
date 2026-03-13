@@ -1,7 +1,7 @@
-site_name: Omeka S Playground Docs
-site_description: Contributor and user documentation for Omeka S Playground.
-site_url: https://ateeducacion.github.io/omeka-s-playground/docs/
-repo_url: https://github.com/ateeducacion/omeka-s-playground
+site_name: FacturaScripts Playground Docs
+site_description: Contributor and user documentation for FacturaScripts Playground.
+site_url: https://erseco.github.io/facturascripts-playground/docs/
+repo_url: https://github.com/erseco/facturascripts-playground
 edit_uri: edit/main/docs/
 docs_dir: docs
 site_dir: site
@@ -10,7 +10,7 @@ theme:
 nav:
   - Home: index.md
   - Getting started: getting-started.md
-  - WordPress Playground model: wordpress-playground.md
+  - Playground model: wordpress-playground.md
   - blueprint.json: blueprint-json.md
   - Development: development.md
 markdown_extensions:

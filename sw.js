@@ -49,7 +49,7 @@ function withAppBasePath(pathname) {
 
 function buildErrorResponse(message, status = 500) {
   return new Response(
-    `<!doctype html><meta charset="utf-8"><title>Omeka Playground Error</title><body><pre>${message}</pre></body>`,
+    `<!doctype html><meta charset="utf-8"><title>FacturaScripts Playground Error</title><body><pre>${message}</pre></body>`,
     {
       status,
       headers: {
@@ -341,19 +341,6 @@ self.addEventListener("fetch", (event) => {
 
     const scopedRequest = await resolveScopedRequest(event, url);
     if (!scopedRequest) {
-      const strippedPathname = stripAppBasePath(url.pathname);
-      if (strippedPathname === "/jquery-3.7.1.min.js") {
-        return fetch(new URL(withAppBasePath("/application/asset/vendor/jquery/jquery.min.js"), self.location.origin));
-      }
-      if (strippedPathname === "/css" && url.searchParams.has("family")) {
-        return new Response("", {
-          status: 200,
-          headers: {
-            "content-type": "text/css; charset=utf-8",
-            "cache-control": "public, max-age=86400",
-          },
-        });
-      }
       return fetch(event.request);
     }
 

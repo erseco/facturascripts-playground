@@ -89,7 +89,7 @@ async function main() {
 
   writeFileSync(indexPath, `${JSON.stringify({
     schemaVersion: 1,
-    format: "omeka-vfs-image-v1",
+    format: "vfs-image-v1",
     generatedAt: new Date().toISOString(),
     root: "/",
     fileCount: entries.length,

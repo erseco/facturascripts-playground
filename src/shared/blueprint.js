@@ -1,6 +1,6 @@
 import { SNAPSHOT_VERSION } from "./protocol.js";
 
-const BLUEPRINT_KEY_PREFIX = "omeka-playground:blueprint";
+const BLUEPRINT_KEY_PREFIX = "facturascripts-playground:blueprint";
 
 function hasWindow() {
   return typeof window !== "undefined";
@@ -77,31 +77,7 @@ function normalizePath(path, fallback = "/") {
   return path.startsWith("/") ? path : `/${path}`;
 }
 
-function normalizeRole(role, fallback = "global_admin") {
-  const normalized = String(role || fallback).trim().toLowerCase();
-  const aliases = {
-    admin: "global_admin",
-    globaladmin: "global_admin",
-    global_admin: "global_admin",
-    siteadmin: "site_admin",
-    site_admin: "site_admin",
-    supervisor: "site_admin",
-  };
-
-  return aliases[normalized] || normalized;
-}
-
-function slugify(value, fallback = "playground") {
-  const slug = String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, "-")
-    .replace(/^-+|-+$/gu, "");
-
-  return slug || fallback;
-}
-
-function normalizeAddonSource(input) {
+function normalizePluginSource(input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     return { type: "bundled" };
   }
@@ -109,7 +85,6 @@ function normalizeAddonSource(input) {
   const type = String(
     input.type
       || (input.url ? "url" : "")
-      || (input.slug ? "omeka.org" : "")
       || "bundled",
   ).trim().toLowerCase();
 
@@ -120,23 +95,15 @@ function normalizeAddonSource(input) {
   if (type === "url") {
     const url = absolutizeUrl(input.url || "");
     if (!url) {
-      throw new Error("Blueprint addon source.type='url' requires source.url.");
+      throw new Error("Blueprint plugin source.type='url' requires source.url.");
     }
     return { type, url };
   }
 
-  if (type === "omeka.org") {
-    const slug = String(input.slug || "").trim();
-    if (!slug) {
-      throw new Error("Blueprint addon source.type='omeka.org' requires source.slug.");
-    }
-    return { type, slug };
-  }
-
-  throw new Error(`Unsupported blueprint addon source type "${type}".`);
+  throw new Error(`Unsupported blueprint plugin source type "${type}".`);
 }
 
-function normalizeAddonCollection(input, kind) {
+function normalizePluginCollection(input) {
   if (!Array.isArray(input)) {
     return [];
   }
@@ -145,24 +112,20 @@ function normalizeAddonCollection(input, kind) {
   return input.map((entry) => {
     const normalized = {
       name: String(entry?.name || entry || "").trim(),
-      source: normalizeAddonSource(entry?.source),
+      source: normalizePluginSource(entry?.source),
     };
-
-    if (kind === "module") {
-      normalized.state = String(entry?.state || "activate").trim().toLowerCase() || "activate";
-    }
 
     if (!normalized.name) {
       return null;
     }
 
     if (/[\\/]/u.test(normalized.name) || normalized.name === "." || normalized.name === "..") {
-      throw new Error(`Blueprint ${kind} name "${normalized.name}" must be a single path segment.`);
+      throw new Error(`Blueprint plugin name "${normalized.name}" must be a single path segment.`);
     }
 
     const dedupeKey = normalized.name.toLowerCase();
     if (seen.has(dedupeKey)) {
-      throw new Error(`Blueprint ${kind}s cannot include duplicate entry "${normalized.name}".`);
+      throw new Error(`Blueprint plugins cannot include duplicate entry "${normalized.name}".`);
     }
     seen.add(dedupeKey);
 
@@ -179,58 +142,23 @@ export function buildDefaultBlueprint(config) {
     $schema: getBlueprintSchemaUrl(),
     meta: {
       title: `${config.siteTitle} Blueprint`,
-      author: "omeka-s-playground",
-      description: "Default Omeka S Playground blueprint.",
-    },
-    preferredVersions: {
-      php: config.runtimes?.find((runtime) => runtime.default)?.phpVersionLabel || config.runtimes?.[0]?.phpVersionLabel || "8.3",
-      omeka: "4.2.0",
+      author: "facturascripts-playground",
+      description: "Default FacturaScripts Playground blueprint.",
     },
     debug: {
       enabled: false,
     },
-    landingPage: "/admin",
+    landingPage: "/",
     siteOptions: {
       title: config.siteTitle,
       locale: config.locale,
       timezone: config.timezone,
     },
     login: {
-      email: config.admin.email,
+      username: config.admin.username,
       password: config.admin.password,
     },
-    users: [
-      {
-        username: config.admin.username,
-        email: config.admin.email,
-        password: config.admin.password,
-        role: "global_admin",
-        isActive: true,
-      },
-    ],
-    themes: [],
-    modules: [],
-    itemSets: [
-      {
-        title: "Playground Collection",
-        description: "Default collection created from the Omeka S Playground blueprint.",
-      },
-    ],
-    items: [
-      {
-        title: "Openverse Sample Image",
-        description: "Sample item created automatically from the default blueprint.",
-        creator: "Openverse",
-        itemSets: ["Playground Collection"],
-        media: [
-          {
-            type: "url",
-            url: "./assets/samples/playground-sample.png",
-            title: "Playground sample image",
-          },
-        ],
-      },
-    ],
+    plugins: [],
   };
 }
 
@@ -239,39 +167,6 @@ export function normalizeBlueprint(input, config) {
     ? structuredClone(input)
     : {};
   const fallback = buildDefaultBlueprint(config);
-  const users = Array.isArray(blueprint.users) && blueprint.users.length > 0
-    ? blueprint.users
-    : fallback.users;
-
-  const normalizedUsers = users.map((user, index) => {
-    const fallbackUser = index === 0 ? fallback.users[0] : {};
-    const email = String(user?.email || fallbackUser.email || "").trim();
-    const username = String(user?.username || user?.name || fallbackUser.username || email.split("@")[0] || `user-${index + 1}`).trim();
-    const password = String(user?.password || fallbackUser.password || "").trim();
-
-    if (!email || !password) {
-      throw new Error(`Blueprint user at index ${index} must include email and password.`);
-    }
-
-    return {
-      username,
-      email,
-      password,
-      role: normalizeRole(user?.role, index === 0 ? "global_admin" : "researcher"),
-      isActive: user?.isActive !== false,
-    };
-  });
-
-  const activeSite = blueprint.site && typeof blueprint.site === "object"
-    ? {
-        title: String(blueprint.site.title || fallback.siteOptions.title).trim(),
-        slug: slugify(blueprint.site.slug || blueprint.site.title || fallback.siteOptions.title),
-        summary: typeof blueprint.site.summary === "string" ? blueprint.site.summary : "",
-        theme: String(blueprint.site.theme || "default").trim(),
-        isPublic: blueprint.site.isPublic !== false,
-        setAsDefault: blueprint.site.setAsDefault !== false,
-      }
-    : null;
 
   return {
     $schema: typeof blueprint.$schema === "string" ? blueprint.$schema : fallback.$schema,
@@ -279,10 +174,6 @@ export function normalizeBlueprint(input, config) {
       title: blueprint.meta?.title || fallback.meta.title,
       author: blueprint.meta?.author || fallback.meta.author,
       description: blueprint.meta?.description || fallback.meta.description,
-    },
-    preferredVersions: {
-      php: blueprint.preferredVersions?.php || fallback.preferredVersions.php,
-      omeka: blueprint.preferredVersions?.omeka || fallback.preferredVersions.omeka,
     },
     debug: {
       enabled: blueprint.debug?.enabled === true,
@@ -294,43 +185,15 @@ export function normalizeBlueprint(input, config) {
       timezone: blueprint.siteOptions?.timezone || fallback.siteOptions.timezone,
     },
     login: {
-      email: blueprint.login?.email || normalizedUsers[0].email,
-      password: blueprint.login?.password || normalizedUsers[0].password,
+      username: blueprint.login?.username || fallback.login.username,
+      password: blueprint.login?.password || fallback.login.password,
     },
-    users: normalizedUsers,
-    site: activeSite,
-    themes: normalizeAddonCollection(blueprint.themes, "theme"),
-    modules: normalizeAddonCollection(blueprint.modules, "module"),
-    itemSets: Array.isArray(blueprint.itemSets)
-      ? blueprint.itemSets.map((itemSet) => ({
-          title: String(itemSet?.title || "").trim(),
-          description: typeof itemSet?.description === "string" ? itemSet.description : "",
-        })).filter((itemSet) => itemSet.title)
-      : [],
-    items: Array.isArray(blueprint.items)
-      ? blueprint.items.map((item) => ({
-          title: String(item?.title || "").trim(),
-          description: typeof item?.description === "string" ? item.description : "",
-          creator: typeof item?.creator === "string" ? item.creator : "",
-          itemSets: Array.isArray(item?.itemSets)
-            ? item.itemSets.map((entry) => String(entry || "").trim()).filter(Boolean)
-            : [],
-          media: Array.isArray(item?.media)
-            ? item.media.map((media) => ({
-                type: String(media?.type || "url").trim().toLowerCase(),
-                url: absolutizeUrl(media?.url || media?.source || ""),
-                title: typeof media?.title === "string" ? media.title : "",
-                altText: typeof media?.altText === "string" ? media.altText : "",
-              })).filter((media) => media.url)
-            : [],
-        })).filter((item) => item.title)
-      : [],
+    plugins: normalizePluginCollection(blueprint.plugins),
   };
 }
 
 export function buildEffectivePlaygroundConfig(config, blueprint) {
   const normalized = normalizeBlueprint(blueprint, config);
-  const primaryUser = normalized.users[0];
 
   return {
     ...config,
@@ -340,9 +203,9 @@ export function buildEffectivePlaygroundConfig(config, blueprint) {
     landingPath: normalized.landingPage,
     debug: normalized.debug,
     admin: {
-      username: primaryUser.username,
-      email: normalized.login.email || primaryUser.email,
-      password: normalized.login.password || primaryUser.password,
+      username: normalized.login.username,
+      email: config.admin.email,
+      password: normalized.login.password,
     },
   };
 }

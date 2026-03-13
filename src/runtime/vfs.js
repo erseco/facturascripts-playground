@@ -40,7 +40,7 @@ export async function loadReadonlyVfs(manifest) {
   return { data, index };
 }
 
-export async function mountReadonlyCore(php, manifest, { root = "/www/omeka" } = {}) {
+export async function mountReadonlyCore(php, manifest, { root = "/www/facturascripts" } = {}) {
   const vfs = await loadReadonlyVfs(manifest);
   const binary = await php.binary;
   const { FS } = binary;

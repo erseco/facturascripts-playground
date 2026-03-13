@@ -43,7 +43,7 @@ const manifest = {
   },
   runtimeVersion: args.runtimeVersion,
   vfs: {
-    format: "omeka-vfs-image-v1",
+    format: "vfs-image-v1",
     mountMode: "memfs-hydrate-v1",
     data: {
       path: relative(resolve(manifestPath, ".."), dataPath).replaceAll("\\", "/"),

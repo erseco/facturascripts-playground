@@ -122,13 +122,13 @@ export function installOutboundFetchPolicy(config) {
 
   const normalized = normalizeOutboundHttpConfig(config);
   const policyKey = JSON.stringify(normalized);
-  const originalFetch = globalThis.__omekaOriginalFetch || globalThis.fetch.bind(globalThis);
+  const originalFetch = globalThis.__playgroundOriginalFetch || globalThis.fetch.bind(globalThis);
 
-  if (!globalThis.__omekaOriginalFetch) {
-    globalThis.__omekaOriginalFetch = originalFetch;
+  if (!globalThis.__playgroundOriginalFetch) {
+    globalThis.__playgroundOriginalFetch = originalFetch;
   }
 
-  if (globalThis.__omekaOutboundFetchPolicyKey === policyKey) {
+  if (globalThis.__playgroundOutboundFetchPolicyKey === policyKey) {
     return normalized;
   }
 
@@ -171,8 +171,8 @@ export function installOutboundFetchPolicy(config) {
     }
   };
 
-  globalThis.__omekaOutboundFetchPolicyKey = policyKey;
-  globalThis.__omekaOutboundFetchPolicy = normalized;
+  globalThis.__playgroundOutboundFetchPolicyKey = policyKey;
+  globalThis.__playgroundOutboundFetchPolicy = normalized;
 
   return normalized;
 }

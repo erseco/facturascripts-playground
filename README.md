@@ -1,219 +1,161 @@
-# Omeka S Playground
+# FacturaScripts Playground
 
-> [Omeka S](https://omeka.org/s/) in the browser, powered by WebAssembly. No server required.
+> FacturaScripts en el navegador con WebAssembly y sin servidor tradicional.
 
-This project runs a full [Omeka S](https://omeka.org/s/) instance entirely in the browser using [php-wasm](https://github.com/nicordev/nicordev-php-wasm). The readonly Omeka core is loaded from a pre-built bundle while a writable overlay persisted in the browser handles the database, uploads, and configuration.
+FacturaScripts Playground ejecuta una instancia completa de [FacturaScripts](https://facturascripts.com) dentro del navegador usando [`php-cgi-wasm`](https://www.npmjs.com/package/php-cgi-wasm). El core se monta como imagen readonly y el estado mutable se guarda en el almacenamiento del navegador.
 
-[Live demo](https://ateeducacion.github.io/omeka-s-playground/) | [Documentation](https://ateeducacion.github.io/omeka-s-playground/docs/) | [Report a bug](https://github.com/ateeducacion/omeka-s-playground/issues)
+[FacturaScripts](https://facturascripts.com/) | [Documentacion oficial](https://facturascripts.com/ayuda) | [Codigo fuente de FacturaScripts](https://github.com/NeoRazorX/facturascripts)
 
-![](https://raw.githubusercontent.com/ateeducacion/omeka-s-playground/main/.github/screenshot.png)
-
----
-
-## Getting Started
-
-### Quick start
+## Inicio rapido
 
 ```bash
-git clone https://github.com/ateeducacion/omeka-s-playground.git
-cd omeka-s-playground
+git clone https://github.com/erseco/facturascripts-playground.git
+cd facturascripts-playground
 make up
 ```
 
-Open <http://localhost:8080> and you will land on a fully installed Omeka S admin panel.
+Abre <http://localhost:8085>.
 
-Default credentials: `admin@example.com` / `password` (configurable in [`playground.config.json`](playground.config.json)).
+Credenciales por defecto:
 
-### Prerequisites
+- usuario: `admin`
+- password: `admin`
 
-- [Node.js](https://nodejs.org/) >= 18 + npm
-- [Composer](https://getcomposer.org/)
-- [Node.js 18+](https://nodejs.org/) (also used by the local dev server)
-- [Git](https://git-scm.com/)
+La configuracion base esta en [playground.config.json](playground.config.json).
 
-### Make targets
+## Requisitos
 
-| Command | Description |
-|---------|-------------|
-| `make up` | Install deps, build the Omeka bundle, and serve locally |
-| `make prepare` | Install npm deps and vendor browser runtime assets |
-| `make bundle` | Fetch Omeka, run Composer, build the VFS image and manifest |
-| `make serve` | Start the local dev server on port 8080, including the addon download proxy |
-| `make clean` | Remove generated bundle and vendored runtime assets |
+- Node.js 18+
+- npm
+- Composer
+- Git
 
----
+## Comandos principales
 
-## How It Works
+| Comando | Descripcion |
+| --- | --- |
+| `make deps` | Instala dependencias npm |
+| `make prepare` | Sincroniza dependencias del runtime y prepara assets WASM |
+| `make bundle` | Descarga FacturaScripts, ejecuta Composer, instala assets frontend y genera el bundle readonly |
+| `make serve` | Arranca el servidor local en `PORT` (por defecto `8085`) |
+| `make up` | Ejecuta `make bundle` y luego `make serve` |
+| `make clean` | Limpia cache y artefactos generados |
 
-```
-index.html          Shell UI (toolbar, address bar, log panel, iframe viewport)
-  └─ remote.html    Runtime host — registers the Service Worker
-       ├─ sw.js     Intercepts requests and forwards them to the PHP worker
-       └─ php-worker.js
-            └─ php-cgi-wasm (WebAssembly)
-                 ├─ Readonly Omeka core  (assets/omeka/*.vfs.*)
-                 └─ Writable overlay     (IndexedDB — SQLite, config, files/)
-```
+Overrides utiles:
 
-On first boot the PHP worker automatically:
-
-1. Mounts the readonly Omeka core bundle.
-2. Writes SQLite configuration.
-3. Runs the Omeka installer programmatically.
-4. Creates the admin user.
-
-Subsequent reloads skip the install unless the bundle version changes.
-
----
-
-## Blueprints
-
-Blueprints are JSON files that describe the desired state of a playground instance — similar to [WordPress Playground Blueprints](https://wordpress.github.io/wordpress-playground/blueprints/).
-
-A default blueprint is bundled at [`assets/blueprints/default.blueprint.json`](assets/blueprints/default.blueprint.json). You can override it by:
-
-- Passing `?blueprint=/path/to/file.json` in the URL.
-- Passing `?blueprint-data=...` in the URL with a base64url-encoded UTF-8 JSON blueprint payload.
-- Importing a `.json` file from the toolbar.
-
-### What blueprints can configure
-
-- Landing page, installation title, locale, and timezone
-- Debug mode for Omeka/PHP error visibility
-- Admin and additional users
-- A default site with a theme selection
-- Item sets and items with remote media
-- Module installation/activation from bundled addons, direct ZIP URLs, or `omeka.org` slugs
-- Theme installation from bundled addons, direct ZIP URLs, or `omeka.org` slugs
-
-### Example
-
-```json
-{
-  "$schema": "./assets/blueprints/blueprint-schema.json",
-  "debug": {
-    "enabled": true
-  },
-  "landingPage": "/s/demo",
-  "siteOptions": {
-    "title": "Demo Omeka",
-    "locale": "es",
-    "timezone": "Atlantic/Canary"
-  },
-  "users": [
-    { "username": "admin", "email": "admin@example.com", "password": "password", "role": "global_admin" }
-  ],
-  "themes": [
-    {
-      "name": "Foundation",
-      "source": { "type": "omeka.org", "slug": "foundation-s" }
-    }
-  ],
-  "modules": [
-    { "name": "CSVImport", "state": "activate" },
-    {
-      "name": "NumericDataTypes",
-      "state": "install",
-      "source": { "type": "omeka.org", "slug": "numeric-data-types" }
-    },
-    {
-      "name": "Mapping",
-      "state": "activate",
-      "source": { "type": "url", "url": "https://example.com/Mapping.zip" }
-    }
-  ],
-  "itemSets": [
-    { "title": "Demo Collection" }
-  ],
-  "items": [
-    {
-      "title": "Landscape sample",
-      "itemSets": ["Demo Collection"],
-      "media": [{ "type": "url", "url": "https://example.com/photo.jpg", "title": "Photo" }]
-    }
-  ],
-  "site": {
-    "title": "Demo Site",
-    "slug": "demo",
-    "theme": "Foundation",
-    "setAsDefault": true
-  }
-}
+```bash
+PORT=9090 make serve
+FS_REF=https://github.com/<org>/facturascripts.git FS_REF_BRANCH=<branch> make bundle
 ```
 
-The full schema is at [`assets/blueprints/blueprint-schema.json`](assets/blueprints/blueprint-schema.json).
-
-When `debug.enabled` is `true`, the playground switches that scope into a development-like Omeka/PHP mode so browser `500` responses expose more useful detail. Use it for diagnosis, not for normal demo blueprints.
-
-For embedded URL payloads, `blueprint-data` expects the JSON blueprint encoded as base64url. Standard base64 is also accepted as long as it is URL-encoded safely.
-
-Example:
+## Como funciona
 
 ```text
-?blueprint-data=eyJsYW5kaW5nUGFnZSI6Ii9hZG1pbiIsInNpdGVPcHRpb25zIjp7InRpdGxlIjoiRW1iZWRkZWQgRGVtbyJ9fQ
+index.html          Shell UI
+  -> src/shell/main.js
+     -> remote.html
+        -> src/remote/main.js
+           -> sw.js
+              -> php-worker.js
+                 -> src/runtime/bootstrap.js
+                 -> src/runtime/vfs.js
+                 -> php-cgi-wasm
 ```
 
-Short form strings remain supported for bundled addons:
+En cada arranque, el runtime:
 
-```json
-{
-  "modules": ["CSVImport"],
-  "themes": ["default"]
-}
-```
+1. Carga el manifiesto de `assets/manifests/latest.json`.
+2. Monta el core readonly de FacturaScripts desde `assets/facturascripts/`.
+3. Crea directorios mutables bajo `/persist` y `/www/facturascripts`.
+4. Genera `config.php` y `php.ini` para SQLite, locale y timezone.
+5. Ejecuta el deploy interno de FacturaScripts para compilar vistas y assets.
+6. En el primer arranque, dispara la inicializacion y crea el usuario admin.
+7. Si `autologin` esta activado, inyecta las cookies de sesion automaticamente.
 
-Remote addons are downloaded into persistent browser storage under `/persist/addons` and re-linked into Omeka on each boot. This means the readonly core bundle stays untouched while downloaded modules/themes survive reloads for the same playground scope.
+## Configuracion
 
-When running locally, the dev server exposes a same-origin addon proxy at the configured `addonProxyPath` so browser-based runtime fetches can read cross-origin ZIPs from GitHub Releases and similar hosts.
+La configuracion del playground se divide en dos capas:
 
-In the public GitHub Pages deployment, the app uses the external ZIP proxy configured via `addonProxyUrl` instead. This is required because GitHub Pages is static-only and cannot implement `__addon_proxy__`, and direct browser fetches to GitHub/Codeload ZIP downloads are not reliable due to CORS. The current production worker is `https://zip-proxy.erseco.workers.dev/`, and its source is kept in [`scripts/zip-proxy-worker.js`](scripts/zip-proxy-worker.js).
+### 1. Configuracion global
 
-The PHP runtime also supports outbound `http`/`https` stream access through VRZNO. In this app those requests are filtered by the `outboundHttp` config, which applies an allowlist and can route cross-origin traffic through the active proxy configuration.
+Archivo: [playground.config.json](playground.config.json)
 
----
+Campos relevantes:
 
-## Deployment
+- `bundleVersion`: version logica del playground.
+- `defaultBlueprintUrl`: blueprint cargado por defecto.
+- `siteTitle`: titulo base de la instancia.
+- `landingPath`: ruta inicial tras el arranque.
+- `locale`: locale por defecto, por ejemplo `es_ES`.
+- `timezone`: zona horaria por defecto.
+- `autologin`: inicia sesion automaticamente con el usuario admin.
+- `resetOnVersionMismatch`: limpia el estado persistido si cambia el bundle.
+- `admin.username`, `admin.password`, `admin.email`: usuario inicial.
+- `runtimes[]`: runtimes PHP disponibles para la UI.
 
-The project deploys as a **static site** — no backend needed.
+### 2. Configuracion por blueprint
 
-A [GitHub Pages workflow](.github/workflows/pages.yml) is included and runs automatically on push to `main`. It installs dependencies, builds the Omeka bundle, renders the MkDocs site under `/docs/`, and publishes the app plus docs together.
+Archivo por defecto: [assets/blueprints/default.blueprint.json](assets/blueprints/default.blueprint.json)
 
----
+El blueprint permite definir:
 
-## Key Technologies
+- `meta`: titulo, autor y descripcion.
+- `debug.enabled`: activa errores PHP visibles en navegador.
+- `landingPage`: pagina de aterrizaje dentro de FacturaScripts.
+- `siteOptions.title`, `siteOptions.locale`, `siteOptions.timezone`: valores efectivos de la instancia.
+- `login.username`, `login.password`: credenciales que se aplican al arranque.
+- `plugins`: listado declarativo de plugins.
 
-| Technology | Role |
-|-----------|------|
-| [php-cgi-wasm](https://www.npmjs.com/package/php-cgi-wasm) | PHP 8.3 compiled to WebAssembly |
-| [Omeka S](https://omeka.org/s/) (SQLite branch) | The digital collections platform being served |
-| [Service Workers](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API) | Intercept HTTP requests and route them to the WASM runtime |
-| [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) | Browser-persistent storage for the writable overlay |
+Se puede cargar un blueprint de tres formas:
 
-The Omeka source is built from the [`feature/experimental-sqlite-support`](https://github.com/ateeducacion/omeka-s/tree/feature/experimental-sqlite-support) branch of [ateeducacion/omeka-s](https://github.com/ateeducacion/omeka-s).
+- `?blueprint=/ruta/al/archivo.json`
+- `?blueprint-data=...` con JSON codificado en base64url
+- importando JSON desde el panel lateral de la shell
 
----
+## Estado actual del soporte de plugins
 
-## Known Limitations
+El esquema ya admite `plugins`, pero la materializacion automatica todavia no esta implementada en el runtime. A dia de hoy:
 
-- Remote addon installation only supports ZIP packages that are already ready to run in Omeka. Releases that require Composer, Node builds, or extra post-install steps are not supported in-browser.
-- `omeka.org` slug resolution depends on the current HTML download links on omeka.org.
-- Remote ZIP downloads need a proxy endpoint when the upstream host does not expose CORS headers. The local dev server provides a same-origin proxy for development, and the public GitHub Pages deployment uses the configured external ZIP proxy worker.
-- PHP outbound HTTP is limited by the configured `outboundHttp.allowedHosts` and `allowedMethods`. Hosts outside that policy will fail by design.
-- Browser compatibility is focused on Chromium; Firefox and Safari may need additional validation for IndexedDB and Service Worker behavior.
-- The export/import of full overlay snapshots is still being hardened.
+- el core de FacturaScripts se empaqueta dentro del bundle readonly
+- los plugins que ya formen parte del arbol empaquetado estaran disponibles
+- el flujo de descarga e instalacion automatica de plugins remotos sigue pendiente
 
----
+Referencia tecnica: [src/runtime/addons.js](src/runtime/addons.js)
 
-## Prior Art
+## Bundle de FacturaScripts
 
-- [WordPress Playground](https://github.com/WordPress/wordpress-playground) — the original inspiration for running a PHP CMS entirely in the browser.
+El bundle readonly se construye con [scripts/build-facturascripts-bundle.sh](scripts/build-facturascripts-bundle.sh).
 
----
+Por defecto usa:
 
-## Contributing
+- repo fuente: `https://github.com/erseco/facturascripts.git`
+- rama: `copilot/add-sqlite-support`
 
-Contributions are welcome. [Open an issue](https://github.com/ateeducacion/omeka-s-playground/issues) or submit a pull request.
+Durante el build:
 
-## License
+- se clona o actualiza el codigo fuente
+- se eliminan directorios no necesarios para el navegador
+- se parchean algunas comprobaciones de extensiones no disponibles en WASM
+- se ejecuta `composer install`
+- si existe `package.json`, se ejecuta `npm install --production`
+- se genera la imagen VFS en `assets/facturascripts/`
+- se actualiza el manifiesto en `assets/manifests/latest.json`
 
-See the repository for license details.
+## Documentacion adicional
+
+- [Inicio de la documentacion](docs/index.md)
+- [Puesta en marcha](docs/getting-started.md)
+- [Modelo inspirado en WordPress Playground](docs/wordpress-playground.md)
+- [Referencia de blueprint.json](docs/blueprint-json.md)
+- [Guia de desarrollo](docs/development.md)
+
+## Limitaciones conocidas
+
+- La compatibilidad esta enfocada sobre todo a navegadores Chromium.
+- El almacenamiento persistente depende de IndexedDB y Service Workers.
+- El soporte declarativo para `plugins` aun no realiza descarga ni instalacion remota.
+- Si cambias el bundle o el service worker, puede hacer falta un hard refresh o limpiar el scope.
+
+## Licencia
+
+Consulta la licencia del repositorio y las licencias de FacturaScripts y sus dependencias.

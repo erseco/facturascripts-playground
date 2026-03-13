@@ -1,17 +1,14 @@
 import { buildEffectivePlaygroundConfig, normalizeBlueprint } from "../shared/blueprint.js";
-import { materializeBlueprintAddons } from "./addons.js";
 import { fetchManifest, buildManifestState } from "./manifest.js";
 import { mountReadonlyCore } from "./vfs.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-export const PLAYGROUND_DB_PATH = "/persist/mutable/db/omeka.sqlite";
+export const PLAYGROUND_DB_PATH = "/persist/mutable/db/facturascripts.sqlite";
 export const PLAYGROUND_CONFIG_PATH = "/persist/mutable/config/playground-state.json";
-export const PLAYGROUND_PREPEND_PATH = "/persist/mutable/config/playground-prepend.php";
-export const OMEKA_ROOT = "/www/omeka";
-export const OMEKA_FILES_PATH = "/persist/mutable/files";
-export const PLAYGROUND_BLUEPRINT_MEDIA_PATH = "/persist/runtime/blueprint-media";
+export const PLAYGROUND_PREPEND_PATH = "/config/playground-prepend.php";
+export const FS_ROOT = "/www/facturascripts";
 
 function phpString(value) {
   return String(value)
@@ -23,1051 +20,397 @@ function phpBoolean(value) {
   return value ? "true" : "false";
 }
 
-function buildDatabaseIni() {
-  return [
-    'driver = "pdo_sqlite"',
-    `path = "${PLAYGROUND_DB_PATH}"`,
-    "",
-  ].join("\n");
-}
-
-function buildLocalConfig(config) {
+function buildConfigPhp(config) {
   const debugEnabled = config.debug?.enabled === true;
 
   return `<?php
-$thumbnailerAlias = extension_loaded('gd')
-    ? 'Omeka\\\\File\\\\Thumbnailer\\\\Gd'
-    : 'Omeka\\\\File\\\\Thumbnailer\\\\NoThumbnail';
+define('FS_COOKIES_EXPIRE', 31536000);
+define('FS_ROUTE', '');
+define('FS_DB_TYPE', 'sqlite');
+define('FS_DB_HOST', '');
+define('FS_DB_PORT', 0);
+define('FS_DB_NAME', '${phpString(PLAYGROUND_DB_PATH)}');
+define('FS_DB_USER', '');
+define('FS_DB_PASS', '');
+define('FS_DB_FOREIGN_KEYS', true);
+define('FS_DB_TYPE_CHECK', true);
+define('FS_LANG', '${phpString(config.locale)}');
+define('FS_TIMEZONE', '${phpString(config.timezone)}');
+define('FS_HIDDEN_PLUGINS', '');
+define('FS_DEBUG', ${phpBoolean(debugEnabled)});
+define('FS_DISABLE_ADD_PLUGINS', false);
+define('FS_DISABLE_RM_PLUGINS', false);
+define('FS_INITIAL_USER', '${phpString(config.admin.username)}');
+define('FS_INITIAL_PASS', '${phpString(config.admin.password)}');
 
-$browserPhpCliPath = '/playground/php-wasm/php';
-$browserImageMagickPath = '/playground/unavailable/convert';
-$browserImageMagickDir = dirname($browserImageMagickPath);
+// =============================================================================
+// WASM environment shims (loaded via config.php to guarantee early execution)
+// =============================================================================
 
-return [
-    'installer' => [
-        'tasks' => [
-            Omeka\\Installation\\Task\\DestroySessionTask::class,
-            Omeka\\Installation\\Task\\ClearCacheTask::class,
-            Omeka\\Installation\\Task\\InstallSchemaTask::class,
-            Omeka\\Installation\\Task\\RecordMigrationsTask::class,
-            Omeka\\Installation\\Task\\CreateFirstUserTask::class,
-            Omeka\\Installation\\Task\\AddDefaultSettingsTask::class,
-        ],
-    ],
-    'logger' => [
-        'log' => ${phpBoolean(debugEnabled)},
-        'priority' => ${debugEnabled ? "\\Laminas\\Log\\Logger::DEBUG" : "\\Laminas\\Log\\Logger::NOTICE"},
-    ],
-    'view_manager' => [
-        'display_not_found_reason' => ${phpBoolean(debugEnabled)},
-        'display_exceptions' => true,
-    ],
-    'assets' => [
-        'use_externals' => false,
-    ],
-    'cli' => [
-        'phpcli_path' => $browserPhpCliPath,
-    ],
-    'file_store' => [
-        'local' => [
-            'base_path' => '${OMEKA_FILES_PATH}',
-        ],
-    ],
-    'translator' => [
-        'locale' => '${config.locale}',
-    ],
-    'entity_manager' => [
-        'is_dev_mode' => ${phpBoolean(debugEnabled)},
-    ],
-    'thumbnails' => [
-        'types' => [
-            'large' => ['constraint' => 800],
-            'medium' => ['constraint' => 400],
-            'square' => ['constraint' => 400],
-        ],
-        'thumbnailer_options' => [
-            'imagemagick_dir' => $browserImageMagickDir,
-        ],
-    ],
-    'service_manager' => [
-        'factories' => [
-            'Omeka\\Cli' => function ($services) use ($browserPhpCliPath, $browserImageMagickPath) {
-                $logger = $services->get('Omeka\\\\Logger');
-                return new class ($logger, $browserPhpCliPath, $browserImageMagickPath) extends \\Omeka\\Stdlib\\Cli {
-                    private $browserPhpCliPath;
-                    private $browserImageMagickPath;
-
-                    public function __construct($logger, $browserPhpCliPath, $browserImageMagickPath)
-                    {
-                        parent::__construct($logger, 'exec');
-                        $this->browserPhpCliPath = $browserPhpCliPath;
-                        $this->browserImageMagickPath = $browserImageMagickPath;
-                    }
-
-                    public function getCommandPath($command)
-                    {
-                        if ($command === 'php') {
-                            return $this->browserPhpCliPath;
-                        }
-                        if ($command === 'convert') {
-                            return $this->browserImageMagickPath;
-                        }
-                        return false;
-                    }
-
-                    public function validateCommand($commandDir, $command = null)
-                    {
-                        $commandPath = $command === null ? (string) $commandDir : sprintf('%s/%s', rtrim((string) $commandDir, '/'), $command);
-                        if ($commandPath === $this->browserPhpCliPath || $commandPath === $this->browserImageMagickPath) {
-                            return $commandPath;
-                        }
-                        return false;
-                    }
-
-                    public function execute($command)
-                    {
-                        $command = (string) $command;
-                        if (str_contains($command, $this->browserPhpCliPath)) {
-                            return 'PHP CLI is not available in the browser playground. Omeka background jobs run synchronously in this runtime.';
-                        }
-                        if (str_contains($command, $this->browserImageMagickPath)) {
-                            return 'ImageMagick is not available in the browser playground. Thumbnail generation uses GD when available and otherwise falls back to no thumbnails.';
-                        }
-                        return false;
-                    }
-                };
-            },
-        ],
-        'aliases' => [
-            'Omeka\\File\\Thumbnailer' => $thumbnailerAlias,
-            'Omeka\\Job\\DispatchStrategy' => 'Omeka\\Job\\DispatchStrategy\\Synchronous',
-        ],
-    ],
-    'media_ingesters' => [
-        'factories' => [
-            'playground_cached_file' => function ($services) {
-                $tempFileFactory = $services->get('Omeka\\\\File\\\\TempFileFactory');
-                return new class ($tempFileFactory) implements \\Omeka\\Media\\Ingester\\IngesterInterface {
-                    private $tempFileFactory;
-
-                    public function __construct($tempFileFactory)
-                    {
-                        $this->tempFileFactory = $tempFileFactory;
-                    }
-
-                    public function getLabel()
-                    {
-                        return 'Playground cached file';
-                    }
-
-                    public function getRenderer()
-                    {
-                        return 'file';
-                    }
-
-                    public function ingest(\\Omeka\\Entity\\Media $media, \\Omeka\\Api\\Request $request, \\Omeka\\Stdlib\\ErrorStore $errorStore)
-                    {
-                        $data = $request->getContent();
-                        $cachedPath = isset($data['playground_cached_path']) ? (string) $data['playground_cached_path'] : '';
-                        if ($cachedPath === '' || !is_readable($cachedPath)) {
-                            $errorStore->addError('playground_cached_path', 'No readable cached file was prepared for this media.');
-                            return;
-                        }
-
-                        $tempFile = $this->tempFileFactory->build();
-
-                        try {
-                            if (!@copy($cachedPath, $tempFile->getTempPath())) {
-                                $errorStore->addError('playground_cached_path', sprintf('Unable to copy cached file "%s" into Omeka temp storage.', $cachedPath));
-                                return;
-                            }
-
-                            $sourceName = isset($data['playground_cached_name']) && $data['playground_cached_name'] !== ''
-                                ? (string) $data['playground_cached_name']
-                                : basename($cachedPath);
-
-                            $tempFile->setSourceName($sourceName);
-                            if (!array_key_exists('o:source', $data)) {
-                                $media->setSource($sourceName);
-                            }
-
-                            $tempFile->mediaIngestFile($media, $request, $errorStore);
-                        } finally {
-                            $tempFile->delete();
-                        }
-                    }
-
-                    public function form(\\Laminas\\View\\Renderer\\PhpRenderer $view, array $options = [])
-                    {
-                        return '';
-                    }
-                };
-            },
-        ],
-    ],
-];
-`;
+// --- Server defaults ---
+if (!isset($_SERVER['HTTP_USER_AGENT']) || $_SERVER['HTTP_USER_AGENT'] === '') {
+    $_SERVER['HTTP_USER_AGENT'] = 'FacturaScripts-Playground/1.0 (WASM)';
 }
 
-function buildPhpPrepend(config) {
-  const debugBlock = config.debug?.enabled === true
-    ? `
-// Enable a development-like Omeka/PHP mode when requested by the blueprint.
-putenv('APPLICATION_ENV=development');
-putenv('OMEKA_REPORT_DEPRECATED=1');
-$_SERVER['APPLICATION_ENV'] = 'development';
-ini_set('display_errors', '1');
-ini_set('display_startup_errors', '1');
-error_reporting(E_ALL);
-`
-    : "";
-
-  return `<?php
-// Generated by Omeka S Playground.
-// This prepend file carries runtime shims needed by the php-wasm environment.
-
-if (!defined('FILEINFO_MIME_TYPE')) {
-    define('FILEINFO_MIME_TYPE', 16);
+// --- curl shim (curl extension is not available in WASM) ---
+if (!defined('CURLOPT_AUTOREFERER')) {
+    define('CURLOPT_AUTOREFERER', 58);
+    define('CURLOPT_FOLLOWLOCATION', 52);
+    define('CURLOPT_RETURNTRANSFER', 19913);
+    define('CURLOPT_TIMEOUT', 13);
+    define('CURLOPT_USERAGENT', 10018);
+    define('CURLOPT_HTTPHEADER', 10023);
+    define('CURLOPT_CUSTOMREQUEST', 10036);
+    define('CURLOPT_URL', 10002);
+    define('CURLOPT_POSTFIELDS', 10015);
+    define('CURLOPT_POST', 47);
+    define('CURLOPT_USERPWD', 10005);
+    define('CURLOPT_HEADERFUNCTION', 20079);
+    define('CURLOPT_SSL_VERIFYPEER', 64);
+    define('CURLOPT_SSL_VERIFYHOST', 81);
+    define('CURLOPT_CONNECTTIMEOUT', 78);
+    define('CURLOPT_ENCODING', 10102);
+    define('CURLOPT_MAXREDIRS', 68);
+    define('CURLOPT_HEADER', 42);
+    define('CURLOPT_NOBODY', 44);
+    define('CURLOPT_VERBOSE', 41);
+    define('CURLOPT_COOKIEFILE', 10031);
+    define('CURLOPT_COOKIEJAR', 10082);
+    define('CURLINFO_HTTP_CODE', 2097154);
+    define('CURLINFO_CONTENT_TYPE', 1048594);
+    define('CURLINFO_EFFECTIVE_URL', 1048577);
+    define('CURLINFO_HEADER_SIZE', 2097163);
+    define('CURLINFO_TOTAL_TIME', 3145731);
+    define('CURL_HTTP_VERSION_1_1', 2);
+    define('CURLOPT_HTTP_VERSION', 84);
 }
 
-if (!class_exists('finfo')) {
-    // php-wasm builds used by the playground may not ship ext-fileinfo.
-    // Omeka needs finfo only to resolve upload media types, so a small
-    // compatibility shim is enough for common browser-uploaded assets.
-    class finfo
-    {
-        public function __construct($flags = FILEINFO_MIME_TYPE)
-        {
+if (!function_exists('curl_init')) {
+    class _CurlHandle {
+        public $url = '';
+        public $method = 'GET';
+        public $headers = [];
+        public $postfields = null;
+        public $returntransfer = false;
+        public $timeout = 30;
+        public $useragent = '';
+        public $userpwd = '';
+        public $followlocation = true;
+        public $header_callback = null;
+        public $error = '';
+        public $info = [];
+    }
+
+    function curl_init($url = null) {
+        $ch = new _CurlHandle();
+        if ($url !== null) {
+            $ch->url = $url;
+        }
+        return $ch;
+    }
+
+    function curl_setopt($ch, $option, $value) {
+        switch ($option) {
+            case CURLOPT_URL: $ch->url = $value; break;
+            case CURLOPT_CUSTOMREQUEST: $ch->method = $value; break;
+            case CURLOPT_POST: if ($value) $ch->method = 'POST'; break;
+            case CURLOPT_POSTFIELDS: $ch->postfields = $value; break;
+            case CURLOPT_RETURNTRANSFER: $ch->returntransfer = (bool)$value; break;
+            case CURLOPT_HTTPHEADER: $ch->headers = (array)$value; break;
+            case CURLOPT_TIMEOUT: $ch->timeout = (int)$value; break;
+            case CURLOPT_USERAGENT: $ch->useragent = $value; break;
+            case CURLOPT_USERPWD: $ch->userpwd = $value; break;
+            case CURLOPT_FOLLOWLOCATION: $ch->followlocation = (bool)$value; break;
+            case CURLOPT_HEADERFUNCTION: $ch->header_callback = $value; break;
+        }
+        return true;
+    }
+
+    function curl_setopt_array($ch, array $options) {
+        foreach ($options as $option => $value) {
+            curl_setopt($ch, $option, $value);
+        }
+        return true;
+    }
+
+    function curl_exec($ch) {
+        $ch->error = '';
+        $ch->info = [
+            CURLINFO_HTTP_CODE => 0,
+            CURLINFO_CONTENT_TYPE => '',
+            CURLINFO_EFFECTIVE_URL => $ch->url,
+        ];
+
+        $contextHeaders = [];
+        foreach ($ch->headers as $h) {
+            $contextHeaders[] = $h;
+        }
+        if ($ch->useragent && !preg_grep('/^User-Agent:/i', $contextHeaders)) {
+            $contextHeaders[] = 'User-Agent: ' . $ch->useragent;
+        }
+        if ($ch->userpwd) {
+            $contextHeaders[] = 'Authorization: Basic ' . base64_encode($ch->userpwd);
         }
 
-        public function file($filename, $flags = null, $context = null)
-        {
-            if (function_exists('getimagesize')) {
-                $imageInfo = @getimagesize($filename);
-                if (is_array($imageInfo) && !empty($imageInfo['mime'])) {
-                    return $imageInfo['mime'];
+        $content = null;
+        $method = $ch->method ?: 'GET';
+
+        if ($ch->postfields !== null && in_array($method, ['POST', 'PUT', 'PATCH'])) {
+            $content = is_array($ch->postfields) ? http_build_query($ch->postfields) : $ch->postfields;
+            if (!preg_grep('/^Content-Type:/i', $contextHeaders)) {
+                $contextHeaders[] = 'Content-Type: application/x-www-form-urlencoded';
+            }
+        }
+
+        $httpOpts = [
+            'method' => $method,
+            'header' => implode("\\r\\n", $contextHeaders),
+            'follow_location' => $ch->followlocation ? 1 : 0,
+            'timeout' => $ch->timeout,
+            'ignore_errors' => true,
+        ];
+        if ($content !== null) {
+            $httpOpts['content'] = $content;
+        }
+
+        $context = stream_context_create(['http' => $httpOpts]);
+        $result = @file_get_contents($ch->url, false, $context);
+
+        if ($result === false) {
+            $ch->error = 'curl shim: request failed for ' . $ch->url;
+            $ch->info[CURLINFO_HTTP_CODE] = 0;
+            return false;
+        }
+
+        $statusCode = 200;
+        if (isset($http_response_header) && is_array($http_response_header)) {
+            foreach ($http_response_header as $responseHeader) {
+                if (preg_match('/^HTTP\\/[\\d.]+ (\\d+)/', $responseHeader, $m)) {
+                    $statusCode = (int)$m[1];
+                }
+                if ($ch->header_callback) {
+                    call_user_func($ch->header_callback, $ch, $responseHeader . "\\r\\n");
                 }
             }
+        }
 
-            $handle = @fopen($filename, 'rb');
-            $head = $handle ? (string) fread($handle, 64) : '';
-            if ($handle) {
-                fclose($handle);
-            }
+        $ch->info[CURLINFO_HTTP_CODE] = $statusCode;
+        return $ch->returntransfer ? $result : true;
+    }
 
-            if (strncmp($head, "\\xFF\\xD8\\xFF", 3) === 0) {
-                return 'image/jpeg';
-            }
-            if (strncmp($head, "\\x89PNG\\r\\n\\x1A\\n", 8) === 0) {
-                return 'image/png';
-            }
-            if (strncmp($head, 'GIF87a', 6) === 0 || strncmp($head, 'GIF89a', 6) === 0) {
-                return 'image/gif';
-            }
-            if (strncmp($head, 'RIFF', 4) === 0 && substr($head, 8, 4) === 'WEBP') {
-                return 'image/webp';
-            }
-            if (strncmp($head, 'RIFF', 4) === 0 && substr($head, 8, 4) === 'WAVE') {
-                return 'audio/wav';
-            }
-            if (strncmp($head, 'OggS', 4) === 0) {
-                return 'application/ogg';
-            }
-            if (strncmp($head, 'ID3', 3) === 0 || strncmp($head, "\\xFF\\xFB", 2) === 0 || strncmp($head, "\\xFF\\xF3", 2) === 0 || strncmp($head, "\\xFF\\xF2", 2) === 0) {
-                return 'audio/mpeg';
-            }
-            if (strncmp($head, "%PDF-", 5) === 0) {
-                return 'application/pdf';
-            }
-            if (strncmp($head, "PK\\x03\\x04", 4) === 0 || strncmp($head, "PK\\x05\\x06", 4) === 0 || strncmp($head, "PK\\x07\\x08", 4) === 0) {
-                return 'application/zip';
-            }
-            if (strncmp($head, 'glTF', 4) === 0) {
-                return 'model/gltf-binary';
-            }
-            if (strlen($head) >= 12 && substr($head, 4, 4) === 'ftyp') {
-                $majorBrand = substr($head, 8, 4);
-                $videoBrands = ['isom', 'iso2', 'avc1', 'mp41', 'mp42', 'M4V ', 'MSNV', 'dash'];
-                $audioBrands = ['M4A ', 'M4B ', 'f4a ', 'f4b '];
-                if (in_array($majorBrand, $audioBrands, true)) {
-                    return 'audio/mp4';
-                }
-                if (in_array($majorBrand, $videoBrands, true)) {
-                    return 'video/mp4';
-                }
-            }
-            if (strncmp($head, "\\x1A\\x45\\xDF\\xA3", 4) === 0) {
-                return 'video/webm';
-            }
-            if (preg_match('/<svg\\b/i', $head)) {
-                return 'image/svg+xml';
-            }
-            if (preg_match('/^solid\\s+/i', $head)) {
-                return 'model/stl';
-            }
+    function curl_getinfo($ch, $opt = null) {
+        if ($opt !== null) {
+            return $ch->info[$opt] ?? null;
+        }
+        return $ch->info;
+    }
 
-            $extension = strtolower((string) pathinfo((string) $filename, PATHINFO_EXTENSION));
-            $byExtension = [
-                'elpx' => 'application/zip',
-                'gif' => 'image/gif',
-                'glb' => 'model/gltf-binary',
-                'jpeg' => 'image/jpeg',
-                'jpg' => 'image/jpeg',
-                'json' => 'application/json',
-                'm4a' => 'audio/mp4',
-                'mp3' => 'audio/mpeg',
-                'mp4' => 'video/mp4',
-                'oga' => 'audio/ogg',
-                'ogg' => 'audio/ogg',
-                'ogv' => 'video/ogg',
-                'pdf' => 'application/pdf',
-                'png' => 'image/png',
-                'stl' => 'model/stl',
-                'svg' => 'image/svg+xml',
-                'txt' => 'text/plain',
-                'wav' => 'audio/wav',
-                'webm' => 'video/webm',
-                'webp' => 'image/webp',
-                'zip' => 'application/zip',
+    function curl_error($ch) {
+        return $ch->error;
+    }
+
+    function curl_errno($ch) {
+        return $ch->error ? 1 : 0;
+    }
+
+    function curl_close($ch) {
+        return true;
+    }
+}
+
+if (!class_exists('CURLFile', false)) {
+    class CURLFile {
+        public $name;
+        public $mime;
+        public $postname;
+        public function __construct(string $filename, string $mime_type = '', string $posted_filename = '') {
+            $this->name = $filename;
+            $this->mime = $mime_type;
+            $this->postname = $posted_filename;
+        }
+        public function getFilename(): string { return $this->name; }
+        public function getMimeType(): string { return $this->mime; }
+        public function getPostFilename(): string { return $this->postname; }
+    }
+}
+
+// --- finfo shim (fileinfo extension is not available in WASM) ---
+if (!class_exists('finfo', false)) {
+    class finfo {
+        private int $flags;
+        public function __construct(int $flags = FILEINFO_NONE, ?string $magic_database = null) {
+            $this->flags = $flags;
+        }
+        public function file(string $filename, int $flags = FILEINFO_NONE, $context = null) {
+            $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+            $map = [
+                'jpg'=>'image/jpeg','jpeg'=>'image/jpeg','png'=>'image/png','gif'=>'image/gif',
+                'svg'=>'image/svg+xml','webp'=>'image/webp','bmp'=>'image/bmp','ico'=>'image/x-icon',
+                'pdf'=>'application/pdf','zip'=>'application/zip','gz'=>'application/gzip',
+                'css'=>'text/css','js'=>'application/javascript','json'=>'application/json',
+                'xml'=>'application/xml','html'=>'text/html','htm'=>'text/html','txt'=>'text/plain',
+                'csv'=>'text/csv','mp3'=>'audio/mpeg','ogg'=>'audio/ogg','wav'=>'audio/wav',
+                'mp4'=>'video/mp4','webm'=>'video/webm',
             ];
-
-            return $byExtension[$extension] ?? 'application/octet-stream';
+            return $map[$ext] ?? 'application/octet-stream';
         }
+        public function buffer(string $string, int $flags = FILEINFO_NONE, $context = null) {
+            return 'application/octet-stream';
+        }
+        public function set_flags(int $flags): bool { $this->flags = $flags; return true; }
     }
 }
-${debugBlock}
+if (!defined('FILEINFO_NONE')) { define('FILEINFO_NONE', 0); }
+if (!defined('FILEINFO_MIME_TYPE')) { define('FILEINFO_MIME_TYPE', 16); }
+if (!defined('FILEINFO_MIME')) { define('FILEINFO_MIME', 1040); }
+
+if (!function_exists('finfo_open')) {
+    function finfo_open(int $flags = FILEINFO_NONE, ?string $magic_database = null) { return new finfo($flags, $magic_database); }
+}
+if (!function_exists('finfo_file')) {
+    function finfo_file($finfo, string $filename, int $flags = FILEINFO_NONE, $context = null) { return $finfo->file($filename, $flags, $context); }
+}
+if (!function_exists('finfo_buffer')) {
+    function finfo_buffer($finfo, string $string, int $flags = FILEINFO_NONE, $context = null) { return $finfo->buffer($string, $flags, $context); }
+}
+if (!function_exists('finfo_close')) {
+    function finfo_close($finfo): bool { return true; }
+}
+if (!function_exists('mime_content_type')) {
+    function mime_content_type(string $filename) { return (new finfo(FILEINFO_MIME_TYPE))->file($filename); }
+}
+
+// --- bcmath polyfill (bcmath extension is not available in WASM) ---
+if (!function_exists('bcadd')) {
+    function _bc_normalize($num) {
+        $num = trim((string)$num);
+        if ($num === '' || $num === '.') return '0';
+        return $num;
+    }
+    function _bc_to_float($num) { return (float)_bc_normalize($num); }
+    function _bc_format($result, $scale) {
+        if ($scale === null) $scale = 0;
+        if ($scale < 0) $scale = 0;
+        $result = number_format($result, $scale + 2, '.', '');
+        if ($scale === 0) {
+            $pos = strpos($result, '.');
+            return $pos !== false ? substr($result, 0, $pos) : $result;
+        }
+        $pos = strpos($result, '.');
+        if ($pos === false) return $result . '.' . str_repeat('0', $scale);
+        $decimals = substr($result, $pos + 1);
+        return substr($result, 0, $pos) . '.' . substr(str_pad($decimals, $scale, '0'), 0, $scale);
+    }
+
+    function bcadd($a, $b, $scale = null) { return _bc_format(_bc_to_float($a) + _bc_to_float($b), $scale); }
+    function bcsub($a, $b, $scale = null) { return _bc_format(_bc_to_float($a) - _bc_to_float($b), $scale); }
+    function bcmul($a, $b, $scale = null) { return _bc_format(_bc_to_float($a) * _bc_to_float($b), $scale); }
+    function bcdiv($a, $b, $scale = null) {
+        $bv = _bc_to_float($b);
+        if ($bv == 0) { trigger_error('bcdiv(): Division by zero', E_USER_WARNING); return null; }
+        return _bc_format(_bc_to_float($a) / $bv, $scale);
+    }
+    function bcmod($a, $b, $scale = null) {
+        $bv = _bc_to_float($b);
+        if ($bv == 0) { trigger_error('bcmod(): Division by zero', E_USER_WARNING); return null; }
+        return _bc_format(fmod(_bc_to_float($a), $bv), $scale);
+    }
+    function bccomp($a, $b, $scale = null) {
+        $av = _bc_to_float($a); $bv = _bc_to_float($b);
+        if ($scale !== null) { $av = round($av, $scale); $bv = round($bv, $scale); }
+        if ($av > $bv) return 1;
+        if ($av < $bv) return -1;
+        return 0;
+    }
+    function bcpow($a, $b, $scale = null) { return _bc_format(pow(_bc_to_float($a), (int)_bc_to_float($b)), $scale); }
+    function bcscale($scale = null) { return 0; }
+    function bcpowmod($a, $b, $mod, $scale = null) {
+        return bcmod(bcpow($a, $b, $scale), $mod, $scale);
+    }
+    function bcsqrt($a, $scale = null) { return _bc_format(sqrt(_bc_to_float($a)), $scale); }
+}
 `;
 }
 
-function buildInstallScript(config, manifestState, blueprint, addonsState) {
+function buildPhpPrepend() {
+  // All WASM shims (curl, finfo, bcmath, etc.) are now defined in config.php
+  // which is loaded via require_once on every request. The prepend is kept
+  // minimal for any per-request setup that cannot go in config.php.
   return `<?php
-define('OMEKA_PATH', '${OMEKA_ROOT}');
-chdir(OMEKA_PATH);
-date_default_timezone_set('${config.timezone}');
-require OMEKA_PATH . '/vendor/autoload.php';
-$application = Omeka\\Mvc\\Application::init(require OMEKA_PATH . '/application/config/application.config.php');
-$serviceManager = $application->getServiceManager();
-$installer = new Omeka\\Installation\\Installer($serviceManager);
-$apiManager = $serviceManager->get('Omeka\\\\ApiManager');
-$entityManager = $serviceManager->get('Omeka\\\\EntityManager');
-$auth = $serviceManager->get('Omeka\\\\AuthenticationService');
-$settings = $serviceManager->get('Omeka\\\\Settings');
-$themeManager = $serviceManager->get('Omeka\\\\Site\\\\ThemeManager');
-$moduleManager = $serviceManager->get('Omeka\\\\ModuleManager');
-$acl = $serviceManager->get('Omeka\\\\Acl');
-$installer->registerPreTask(Omeka\\Installation\\Task\\CheckEnvironmentTask::class);
-$installer->registerPreTask(Omeka\\Installation\\Task\\CheckDirPermissionsTask::class);
-$installer->registerTask(Omeka\\Installation\\Task\\DestroySessionTask::class);
-$installer->registerTask(Omeka\\Installation\\Task\\ClearCacheTask::class);
-$installer->registerTask(Omeka\\Installation\\Task\\InstallSchemaTask::class);
-$installer->registerTask(Omeka\\Installation\\Task\\RecordMigrationsTask::class);
-$installer->registerTask(Omeka\\Installation\\Task\\CreateFirstUserTask::class);
-$installer->registerTask(Omeka\\Installation\\Task\\AddDefaultSettingsTask::class);
-$status = $serviceManager->get('Omeka\\\\Status');
-$blueprint = json_decode('${phpString(JSON.stringify(blueprint))}', true);
-
-$statePath = '${PLAYGROUND_CONFIG_PATH}';
-$state = [
-  'manifest' => json_decode('${phpString(JSON.stringify(manifestState))}', true),
-  'blueprint' => $blueprint,
-  'addons' => json_decode('${phpString(JSON.stringify(addonsState))}', true),
-  'installedAt' => gmdate('c'),
-];
-
-$warnings = [];
-$shouldRerunBootstrap = false;
-$themeSpecsByName = [];
-foreach (($blueprint['themes'] ?? []) as $themeSpec) {
-  $themeName = trim((string) ($themeSpec['name'] ?? ''));
-  if ($themeName !== '') {
-    $themeSpecsByName[$themeName] = $themeSpec;
-  }
+// Placeholder — all shims live in config.php for reliable loading.
+`;
 }
 
-$findUserByEmail = function (string $email) use ($entityManager) {
-  return $entityManager->getRepository(Omeka\\Entity\\User::class)->findOneBy(['email' => $email]);
-};
+function buildInstallScript() {
+  return `<?php
+error_reporting(E_ALL);
+ini_set('display_errors', '1');
 
-$upsertUser = function (array $spec) use ($apiManager, $entityManager, &$warnings, $findUserByEmail) {
-  $existing = $findUserByEmail($spec['email']);
-  $payload = [
-    'o:is_active' => array_key_exists('isActive', $spec) ? (bool) $spec['isActive'] : true,
-    'o:role' => $spec['role'] ?? 'researcher',
-    'o:name' => $spec['username'] ?? $spec['name'] ?? strtok($spec['email'], '@'),
-    'o:email' => $spec['email'],
-  ];
+define('FS_FOLDER', '${FS_ROOT}');
 
-  if ($existing) {
-    $apiManager->update('users', $existing->getId(), $payload, [], ['isPartial' => true]);
-    $user = $entityManager->find(Omeka\\Entity\\User::class, $existing->getId());
-  } else {
-    $response = $apiManager->create('users', $payload);
-    $userId = $response->getContent()->id();
-    $user = $entityManager->find(Omeka\\Entity\\User::class, $userId);
-  }
+require_once FS_FOLDER . '/config.php';
+require_once FS_FOLDER . '/vendor/autoload.php';
 
-  if (!empty($spec['password'])) {
-    $user->setPassword($spec['password']);
-    $entityManager->flush();
-  }
-
-  return $user;
-};
-
-$ensureAdminIdentity = function (string $email) use ($auth, $findUserByEmail, $entityManager) {
-  $admin = $findUserByEmail($email);
-  if (!$admin) {
-    $admin = $entityManager->getRepository(Omeka\\Entity\\User::class)->findOneBy(['role' => 'global_admin'], ['id' => 'ASC']);
-  }
-  if ($admin) {
-    $auth->getStorage()->write($admin);
-  }
-  return $admin;
-};
-
-$normalizeModuleState = function (?string $state): string {
-  $normalized = strtolower(trim((string) $state));
-  return $normalized ?: 'activate';
-};
-
-$searchOne = function (string $resource, array $query) use ($apiManager) {
-  $response = $apiManager->search($resource, $query + ['limit' => 1]);
-  $content = $response->getContent();
-  return $content ? reset($content) : null;
-};
-
-$debug = function (string $message) {
-  echo "[debug] " . $message . PHP_EOL;
-};
-
-$propertyIdByTerm = function (string $term) use ($searchOne, &$warnings) {
-  static $propertyMap = [];
-  if (array_key_exists($term, $propertyMap)) {
-    return $propertyMap[$term];
-  }
-
-  $property = $searchOne('properties', ['term' => $term]);
-  if (!$property) {
-    $warnings[] = sprintf('Property "%s" is not available in this Omeka installation.', $term);
-    return null;
-  }
-
-  $propertyMap[$term] = $property->id();
-  return $propertyMap[$term];
-};
-
-$literalValues = function (?int $propertyId, ?string $value) {
-  if (!$propertyId || $value === null || trim($value) === '') {
-    return [];
-  }
-
-  return [[
-    'property_id' => $propertyId,
-    'type' => 'literal',
-    '@value' => $value,
-  ]];
-};
-
-$findExistingMediaBySource = function (int $itemId, string $source) use ($entityManager) {
-  $item = $entityManager->find(Omeka\\Entity\\Item::class, $itemId);
-  if (!$item) {
-    return null;
-  }
-
-  return $entityManager->getRepository(Omeka\\Entity\\Media::class)->findOneBy([
-    'item' => $item,
-    'source' => $source,
-  ]);
-};
-
-$flattenErrors = function ($messages) use (&$flattenErrors) {
-  $flattened = [];
-  foreach ((array) $messages as $key => $value) {
-    if (is_array($value)) {
-      foreach ($flattenErrors($value) as $nested) {
-        $flattened[] = is_string($key) && $key !== '' ? sprintf('%s: %s', $key, $nested) : $nested;
-      }
-      continue;
+// Create required mutable directories
+$dirs = ['Plugins', 'Dinamic', 'MyFiles', 'MyFiles/Log'];
+foreach ($dirs as $dir) {
+    $path = FS_FOLDER . '/' . $dir;
+    if (!is_dir($path)) {
+        @mkdir($path, 0777, true);
     }
-
-    if ($value instanceof Stringable) {
-      $flattened[] = (string) $value;
-      continue;
-    }
-
-    if ($value !== null && $value !== '') {
-      $flattened[] = (string) $value;
-    }
-  }
-  return $flattened;
-};
-
-$describeThrowable = function (Throwable $e) use ($flattenErrors) {
-  $parts = [];
-  $message = trim($e->getMessage());
-  if ($message !== '') {
-    $parts[] = $message;
-  }
-  if (method_exists($e, 'getErrorStore')) {
-    $errors = $e->getErrorStore()->getErrors();
-    $flattened = $flattenErrors($errors);
-    if ($flattened) {
-      $parts[] = implode(' | ', array_unique($flattened));
-    }
-  }
-  return $parts ? implode(' | ', $parts) : get_class($e);
-};
-
-$ensureCoreVocabulary = function () use ($searchOne, $propertyIdByTerm, $apiManager, &$warnings, $debug) {
-  if ($propertyIdByTerm('dcterms:title')) {
-    $debug('Dublin Core vocabulary already available.');
-    return;
-  }
-
-  try {
-    $existing = $searchOne('vocabularies', ['prefix' => 'dcterms']);
-    if (!$existing) {
-      $apiManager->create('vocabularies', [
-        'o:namespace_uri' => 'http://purl.org/dc/terms/',
-        'o:prefix' => 'dcterms',
-        'o:label' => 'Dublin Core',
-        'o:comment' => 'Basic resource metadata (DCMI Metadata Terms)',
-        'o:property' => [
-          [
-            'o:local_name' => 'title',
-            'o:label' => 'Title',
-            'o:comment' => 'A name given to the resource.',
-          ],
-          [
-            'o:local_name' => 'description',
-            'o:label' => 'Description',
-            'o:comment' => 'An account of the resource.',
-          ],
-          [
-            'o:local_name' => 'creator',
-            'o:label' => 'Creator',
-            'o:comment' => 'An entity primarily responsible for making the resource.',
-          ],
-        ],
-      ]);
-      $debug('Created minimal Dublin Core vocabulary directly through the API.');
-    } else {
-      $debug('Dublin Core vocabulary already registered in Omeka.');
-    }
-  } catch (Throwable $e) {
-    $warnings[] = sprintf('Unable to import the Dublin Core vocabulary automatically: %s', $e->getMessage());
-  }
-};
-
-if (!$status->isInstalled()) {
-  $installer->registerVars('Omeka\\\\Installation\\\\Task\\\\CreateFirstUserTask', [
-    'name' => '${config.admin.username}',
-    'email' => '${config.admin.email}',
-    'password-confirm' => [
-      'password' => '${config.admin.password}',
-    ],
-  ]);
-
-  $installer->registerVars('Omeka\\\\Installation\\\\Task\\\\AddDefaultSettingsTask', [
-    'administrator_email' => '${config.admin.email}',
-    'installation_title' => '${config.siteTitle}',
-    'time_zone' => '${config.timezone}',
-    'locale' => '${config.locale}',
-  ]);
-
-  if (!$installer->install()) {
-    echo implode(PHP_EOL, $installer->getErrors()) . PHP_EOL;
-    exit(1);
-  }
 }
 
-$ensureAdminIdentity('${config.admin.email}');
+// Deploy plugins to create tables and initial structure
+$pluginManager = new FacturaScripts\\Core\\Plugins();
+$pluginManager->deploy(true, true);
 
-$users = $blueprint['users'] ?? [];
-if (!$users) {
-  $users = [[
-    'username' => '${config.admin.username}',
-    'email' => '${config.admin.email}',
-    'password' => '${config.admin.password}',
-    'role' => 'global_admin',
-    'isActive' => true,
-  ]];
-}
-
-foreach ($users as $userSpec) {
-  $upsertUser($userSpec);
-}
-
-$primaryAdmin = $ensureAdminIdentity($users[0]['email'] ?? '${config.admin.email}');
-if (!$primaryAdmin) {
-  throw new RuntimeException('Unable to establish a global admin identity for blueprint provisioning.');
-}
-
-$settings->set('administrator_email', '${config.admin.email}');
-$settings->set('installation_title', '${config.siteTitle}');
-$settings->set('locale', '${config.locale}');
-$settings->set('time_zone', '${config.timezone}');
-
-foreach (($blueprint['modules'] ?? []) as $moduleSpec) {
-  $moduleName = trim((string) ($moduleSpec['name'] ?? ''));
-  if ($moduleName === '') {
-    continue;
-  }
-
-  $module = $moduleManager->getModule($moduleName);
-  if (!$module) {
-    $sourceType = strtolower(trim((string) (($moduleSpec['source']['type'] ?? 'bundled'))));
-    if ($sourceType !== 'bundled') {
-      throw new RuntimeException(sprintf('Module "%s" was requested from source type "%s" but is still missing from the runtime filesystem.', $moduleName, $sourceType));
-    }
-
-    $warnings[] = sprintf('Module "%s" is not present in the bundled Omeka filesystem.', $moduleName);
-    continue;
-  }
-
-  $state = $normalizeModuleState($moduleSpec['state'] ?? 'activate');
-  $moduleState = $module->getState();
-
-  if ($moduleState === Omeka\\Module\\Manager::STATE_NOT_INSTALLED && in_array($state, ['install', 'activate'], true)) {
-    $moduleManager->install($module);
-    $shouldRerunBootstrap = true;
-    break;
-  }
-
-  if ($moduleState === Omeka\\Module\\Manager::STATE_NOT_ACTIVE && $state === 'activate') {
-    $moduleManager->activate($module);
-    $shouldRerunBootstrap = true;
-    break;
-  }
-}
-
-if ($shouldRerunBootstrap) {
-  file_put_contents($statePath, json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-  echo "omeka-playground-bootstrap-continue\\n";
-  foreach ($warnings as $warning) {
-    echo "[warning] " . $warning . "\\n";
-  }
-  exit(0);
-}
-
-$siteSpec = $blueprint['site'] ?? null;
-$siteResource = null;
-if (is_array($siteSpec) && !empty($siteSpec['title'])) {
-  $themeName = trim((string) ($siteSpec['theme'] ?? 'default'));
-  if (!$themeManager->getTheme($themeName)) {
-    $themeSpec = $themeSpecsByName[$themeName] ?? null;
-    $sourceType = strtolower(trim((string) (($themeSpec['source']['type'] ?? 'bundled'))));
-    if ($sourceType !== 'bundled') {
-      throw new RuntimeException(sprintf('Theme "%s" was requested from source type "%s" but is still missing from the runtime filesystem.', $themeName, $sourceType));
-    }
-
-    $warnings[] = sprintf('Theme "%s" is not present in the bundled Omeka filesystem. Falling back to "default".', $themeName);
-    $themeName = 'default';
-  }
-
-  $siteRepo = $entityManager->getRepository(Omeka\\Entity\\Site::class);
-  $site = $siteRepo->findOneBy(['slug' => $siteSpec['slug']]);
-  $payload = [
-    'o:title' => $siteSpec['title'],
-    'o:slug' => $siteSpec['slug'],
-    'o:theme' => $themeName,
-    'o:is_public' => array_key_exists('isPublic', $siteSpec) ? (bool) $siteSpec['isPublic'] : true,
-    'o:item_pool' => [],
-  ];
-  if (!empty($siteSpec['summary'])) {
-    $payload['o:summary'] = $siteSpec['summary'];
-  }
-
-  if ($site) {
-    $apiManager->update('sites', $site->getId(), $payload, [], ['isPartial' => true]);
-    $siteResponse = $apiManager->read('sites', $site->getId());
-  } else {
-    $siteResponse = $apiManager->create('sites', $payload);
-  }
-
-  $siteResource = $siteResponse->getContent();
-  if (!empty($siteSpec['setAsDefault'])) {
-    $settings->set('default_site', $siteResource->id());
-  }
-}
-
-$ensureCoreVocabulary();
-$titlePropertyId = $propertyIdByTerm('dcterms:title');
-$descriptionPropertyId = $propertyIdByTerm('dcterms:description');
-$creatorPropertyId = $propertyIdByTerm('dcterms:creator');
-$debug(sprintf(
-  'Resolved property ids: title=%s description=%s creator=%s',
-  json_encode($titlePropertyId),
-  json_encode($descriptionPropertyId),
-  json_encode($creatorPropertyId)
-));
-
-$itemSetIdsByTitle = [];
-if ($titlePropertyId) {
-foreach (($blueprint['itemSets'] ?? []) as $itemSetSpec) {
-  if (empty($itemSetSpec['title'])) {
-    continue;
-  }
-
-  $searchQuery = [
-    'property' => [[
-      'property' => $titlePropertyId,
-      'type' => 'eq',
-      'text' => $itemSetSpec['title'],
-    ]],
-  ];
-  $existing = $titlePropertyId ? $searchOne('item_sets', $searchQuery) : null;
-  $payload = [
-    'dcterms:title' => $literalValues($titlePropertyId, $itemSetSpec['title']),
-  ];
-  if (!empty($itemSetSpec['description'])) {
-    $payload['dcterms:description'] = $literalValues($descriptionPropertyId, $itemSetSpec['description']);
-  }
-
-  try {
-    if ($existing) {
-      $apiManager->update('item_sets', $existing->id(), $payload);
-      $itemSetIdsByTitle[$itemSetSpec['title']] = $existing->id();
-      $debug(sprintf('Updated item set "%s" (#%s).', $itemSetSpec['title'], $existing->id()));
-    } else {
-      $response = $apiManager->create('item_sets', $payload);
-      $itemSetIdsByTitle[$itemSetSpec['title']] = $response->getContent()->id();
-      $debug(sprintf('Created item set "%s" (#%s).', $itemSetSpec['title'], $response->getContent()->id()));
-    }
-  } catch (Throwable $e) {
-    $warnings[] = sprintf('Unable to provision item set "%s": %s', $itemSetSpec['title'], $e->getMessage());
-  }
-}
-
-foreach (($blueprint['items'] ?? []) as $itemSpec) {
-  if (empty($itemSpec['title'])) {
-    continue;
-  }
-
-  $searchQuery = [
-    'property' => [[
-      'property' => $titlePropertyId,
-      'type' => 'eq',
-      'text' => $itemSpec['title'],
-    ]],
-  ];
-  $existing = $titlePropertyId ? $searchOne('items', $searchQuery) : null;
-  $payload = [
-    'dcterms:title' => $literalValues($titlePropertyId, $itemSpec['title']),
-  ];
-
-  if (!empty($itemSpec['description'])) {
-    $payload['dcterms:description'] = $literalValues($descriptionPropertyId, $itemSpec['description']);
-  }
-
-  if (!empty($itemSpec['creator'])) {
-    $payload['dcterms:creator'] = $literalValues($creatorPropertyId, $itemSpec['creator']);
-  }
-
-  $itemSetIds = [];
-  foreach (($itemSpec['itemSets'] ?? []) as $itemSetTitle) {
-    if (isset($itemSetIdsByTitle[$itemSetTitle])) {
-      $itemSetIds[] = ['o:id' => $itemSetIdsByTitle[$itemSetTitle]];
-    }
-  }
-  if ($itemSetIds) {
-    $payload['o:item_set'] = $itemSetIds;
-  }
-
-  if ($siteResource) {
-    $payload['o:site'] = [['o:id' => $siteResource->id()]];
-  }
-
-  try {
-    $itemId = null;
-    if ($existing) {
-      $apiManager->update('items', $existing->id(), $payload);
-      $itemId = $existing->id();
-      $debug(sprintf('Updated item "%s" (#%s).', $itemSpec['title'], $existing->id()));
-    } else {
-      $response = $apiManager->create('items', $payload);
-      $itemId = $response->getContent()->id();
-      $debug(sprintf('Created item "%s" (#%s).', $itemSpec['title'], $itemId));
-    }
-
-    if (!$itemId) {
-      continue;
-    }
-
-    foreach (($itemSpec['media'] ?? []) as $mediaSpec) {
-      if (($mediaSpec['type'] ?? 'url') !== 'url' || empty($mediaSpec['url'])) {
-        continue;
-      }
-
-      $mediaSource = trim((string) $mediaSpec['url']);
-      if ($mediaSource === '') {
-        continue;
-      }
-
-      if ($findExistingMediaBySource($itemId, $mediaSource)) {
-        $debug(sprintf('Skipped media "%s" for item "%s" (#%s) because it already exists.', $mediaSource, $itemSpec['title'], $itemId));
-        continue;
-      }
-
-      $cachedPath = isset($mediaSpec['cachedPath']) ? trim((string) $mediaSpec['cachedPath']) : '';
-      $mediaPayload = [
-        'o:item' => ['o:id' => $itemId],
-        'o:source' => $mediaSource,
-      ];
-      if (!empty($mediaSpec['title'])) {
-        $mediaPayload['dcterms:title'] = $literalValues($titlePropertyId, $mediaSpec['title']);
-      }
-      if (!empty($mediaSpec['altText'])) {
-        $mediaPayload['o:alt_text'] = $mediaSpec['altText'];
-      }
-
-      try {
-        if ($cachedPath !== '' && is_readable($cachedPath)) {
-          $mediaPayload['o:ingester'] = 'playground_cached_file';
-          $mediaPayload['playground_cached_path'] = $cachedPath;
-          $mediaPayload['playground_cached_name'] = !empty($mediaSpec['cachedName']) ? $mediaSpec['cachedName'] : basename($cachedPath);
-          $mediaResponse = $apiManager->create('media', $mediaPayload);
-        } else {
-          $mediaPayload['o:ingester'] = 'url';
-          $mediaPayload['ingest_url'] = $mediaSource;
-          $mediaResponse = $apiManager->create('media', $mediaPayload);
-        }
-        $debug(sprintf('Created media for item "%s" (#%s) from "%s" (#%s).', $itemSpec['title'], $itemId, $mediaSource, $mediaResponse->getContent()->id()));
-      } catch (Throwable $e) {
-        $warnings[] = sprintf('Unable to attach media "%s" to item "%s": %s', $mediaSource, $itemSpec['title'], $describeThrowable($e));
-      }
-    }
-  } catch (Throwable $e) {
-    $warnings[] = sprintf('Unable to provision item "%s": %s', $itemSpec['title'], $describeThrowable($e));
-  }
-}
-} elseif (($blueprint['itemSets'] ?? []) || ($blueprint['items'] ?? [])) {
-  $warnings[] = 'Blueprint content provisioning was skipped because dcterms:title is not available in this runtime.';
-}
-
-file_put_contents($statePath, json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-echo "omeka-playground-bootstrap-complete\\n";
-foreach ($warnings as $warning) {
-  echo "[warning] " . $warning . "\\n";
-}
+echo 'INSTALL_OK';
 `;
 }
 
 function buildProbeScript() {
   return `<?php
-$result = [
-  'php_ini_loaded_file' => php_ini_loaded_file(),
-  'pdo_loaded' => extension_loaded('PDO'),
-  'sqlite_loaded' => extension_loaded('sqlite3'),
-  'pdo_sqlite_loaded' => extension_loaded('pdo_sqlite'),
-  'available_drivers' => class_exists('PDO') ? PDO::getAvailableDrivers() : [],
-  'php_ini' => @file_get_contents('/php.ini'),
-];
+$ok = true;
+$results = [];
 
-header('Content-Type: application/json');
-echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+if (extension_loaded('pdo_sqlite')) {
+    $results[] = 'pdo_sqlite: OK';
+} else {
+    $results[] = 'pdo_sqlite: MISSING';
+    $ok = false;
+}
+
+try {
+    $db = new PDO('sqlite::memory:');
+    $db->exec('CREATE TABLE _probe (id INTEGER PRIMARY KEY)');
+    $db->exec('INSERT INTO _probe (id) VALUES (1)');
+    $row = $db->query('SELECT id FROM _probe LIMIT 1')->fetch();
+    $results[] = $row && $row['id'] == 1 ? 'sqlite: OK' : 'sqlite: FAIL';
+} catch (Throwable $e) {
+    $results[] = 'sqlite: ERROR ' . $e->getMessage();
+    $ok = false;
+}
+
+header('Content-Type: text/plain');
+echo implode("\\n", $results) . "\\n";
+echo $ok ? 'PROBE_OK' : 'PROBE_FAIL';
 `;
 }
 
-function extractCsrfField(html) {
-  const match = html.match(/<input[^>]+type=["']hidden["'][^>]+name=["']([^"']+_csrf|csrf)["'][^>]+value=["']([^"']*)["'][^>]*>/iu);
-  if (!match) {
-    return null;
-  }
-
-  return {
-    name: match[1],
-    value: match[2],
-  };
-}
-
-function buildFormUrlEncoded(payload) {
-  const body = new URLSearchParams();
-  for (const [key, value] of Object.entries(payload)) {
-    if (value === undefined || value === null || value === "") {
-      continue;
-    }
-    body.set(key, value);
-  }
-  return body.toString();
-}
-
-function isLoginPage(html) {
-  return /<body[^>]*class=["'][^"']*\blogin\b[^"']*["']/iu.test(html)
-    || /<h1>\s*Log in\s*<\/h1>/iu.test(html);
-}
-
-async function performAutologin(php, config, publish) {
-  publish("Signing in admin user automatically.", 0.9);
-
-  const loginUrl = "https://playground.internal/login";
-  const adminUrl = "https://playground.internal/admin";
-
-  const loginPage = await php.request(new Request(loginUrl));
-  const loginHtml = await loginPage.text();
-  const csrfField = extractCsrfField(loginHtml);
-
-  const formPayload = {
-    email: config.admin.email,
-    password: config.admin.password,
-    submit: "Log in",
-  };
-
-  if (csrfField) {
-    formPayload[csrfField.name] = csrfField.value;
-  }
-
-  const loginResponse = await php.request(new Request(loginUrl, {
-    method: "POST",
-    headers: {
-      "content-type": "application/x-www-form-urlencoded",
-    },
-    body: buildFormUrlEncoded(formPayload),
-  }));
-
-  const location = loginResponse.headers.get("location") || "";
-  if (location && /\/admin(?:\/|$)?/u.test(location)) {
-    return {
-      ok: true,
-      path: "/admin",
-    };
-  }
-
-  const adminResponse = await php.request(new Request(adminUrl));
-  const adminHtml = await adminResponse.text();
-  const adminLocation = adminResponse.headers.get("location") || "";
-  const landedOnLogin = /\/login(?:\/|$)?/u.test(adminLocation) || isLoginPage(adminHtml);
-
-  if (landedOnLogin) {
-    return {
-      ok: false,
-      path: "/login",
-      warning: "Automatic admin login did not establish a browser session.",
-    };
-  }
-
-  return {
-    ok: true,
-    path: "/admin",
-  };
-}
-
-function buildPhpIni(config) {
-  const debugEnabled = config.debug?.enabled === true;
-
-  return [
-    `display_errors=${debugEnabled ? 1 : 0}`,
-    `display_startup_errors=${debugEnabled ? 1 : 0}`,
-    `error_reporting=${debugEnabled ? "E_ALL" : "E_ALL & ~E_DEPRECATED"}`,
-    "memory_limit=512M",
-    "max_execution_time=30",
-    "allow_url_fopen=1",
-    `auto_prepend_file=${PLAYGROUND_PREPEND_PATH}`,
-    `date.timezone=${config.timezone}`,
-    "session.save_path=/persist/mutable/session",
-    "",
-  ].join("\n");
-}
-
-async function ensureDir(php, path) {
+function ensureDirSync(FS, path) {
   const segments = path.split("/").filter(Boolean);
   let current = "";
   for (const segment of segments) {
     current = `${current}/${segment}`;
-    const about = await php.analyzePath(current);
+    const about = FS.analyzePath(current);
     if (!about?.exists) {
       try {
-        await php.mkdir(current);
+        FS.mkdir(current);
       } catch {
-        // Ignore races between workers/requests.
+        // Ignore existing directories.
       }
     }
   }
-}
-
-async function ensureMutableLayout(php) {
-  for (const path of [
-    "/persist",
-    "/persist/addons",
-    "/persist/mutable",
-    "/persist/mutable/config",
-    "/persist/mutable/db",
-    "/persist/mutable/files",
-    "/persist/mutable/logs",
-    "/persist/mutable/session",
-    "/persist/runtime",
-    PLAYGROUND_BLUEPRINT_MEDIA_PATH,
-  ]) {
-    await ensureDir(php, path);
-  }
-}
-
-async function resetPersistedState(php) {
-  const binary = await php.binary;
-  const { FS } = binary;
-  const persistedRoot = "/persist";
-  const about = FS.analyzePath(persistedRoot);
-  if (!about.exists) {
-    return;
-  }
-
-  for (const entry of FS.readdir(persistedRoot)) {
-    if (entry === "." || entry === "..") {
-      continue;
-    }
-    removeNodeIfPresent(FS, `${persistedRoot}/${entry}`.replace(/\/{2,}/gu, "/"));
-  }
-}
-
-function sanitizeMediaFilename(value, fallback = "media.bin") {
-  const normalized = String(value || "").trim().replace(/[?#].*$/u, "");
-  const candidate = normalized.split("/").filter(Boolean).pop() || fallback;
-  const sanitized = candidate.replace(/[^a-zA-Z0-9._-]/gu, "_");
-  return sanitized || fallback;
-}
-
-function buildBlueprintMediaCachePath(itemIndex, mediaIndex, filename) {
-  const safeName = sanitizeMediaFilename(filename, `media-${itemIndex + 1}-${mediaIndex + 1}.bin`);
-  return `${PLAYGROUND_BLUEPRINT_MEDIA_PATH}/item-${itemIndex + 1}-media-${mediaIndex + 1}-${safeName}`;
-}
-
-async function cacheBlueprintMediaFiles({ php, blueprint, publish }) {
-  const stagedBlueprint = structuredClone(blueprint);
-  const items = Array.isArray(stagedBlueprint.items) ? stagedBlueprint.items : [];
-
-  for (const [itemIndex, item] of items.entries()) {
-    const mediaEntries = Array.isArray(item.media) ? item.media : [];
-    for (const [mediaIndex, media] of mediaEntries.entries()) {
-      if ((media?.type || "url") !== "url" || !media?.url) {
-        continue;
-      }
-
-      const sourceUrl = String(media.url).trim();
-      if (!sourceUrl) {
-        continue;
-      }
-
-      try {
-        const directFetch = globalThis.__omekaOriginalFetch || globalThis.fetch.bind(globalThis);
-        const response = await directFetch(sourceUrl, { redirect: "follow" });
-        if (!response.ok) {
-          throw new Error(`${response.status} ${response.statusText}`.trim());
-        }
-
-        const bytes = new Uint8Array(await response.arrayBuffer());
-        const cachedName = sanitizeMediaFilename(new URL(response.url || sourceUrl, sourceUrl).pathname, `media-${itemIndex + 1}-${mediaIndex + 1}.bin`);
-        const cachedPath = buildBlueprintMediaCachePath(itemIndex, mediaIndex, cachedName);
-        await php.writeFile(cachedPath, bytes);
-        media.cachedPath = cachedPath;
-        media.cachedName = cachedName;
-      } catch (error) {
-        const detail = error?.message ? String(error.message) : String(error);
-        publish(`[warning] Unable to prefetch media "${sourceUrl}" for blueprint item "${item.title || `#${itemIndex + 1}`}": ${detail}`, 0.56);
-      }
-    }
-  }
-
-  return stagedBlueprint;
 }
 
 function removeNodeIfPresent(FS, path) {
@@ -1091,186 +434,228 @@ function removeNodeIfPresent(FS, path) {
   FS.unlink(path);
 }
 
-async function linkMutableFilesDir(php) {
-  const binary = await php.binary;
-  const { FS } = binary;
-  const targetPath = `${OMEKA_ROOT}/files`;
-  const about = FS.analyzePath(targetPath);
+function pathExists(FS, path) {
+  return FS.analyzePath(path)?.exists || false;
+}
 
-  if (about.exists) {
-    const mode = about.object?.mode;
-    if (typeof mode === "number" && FS.isLink(mode)) {
-      const existingTarget = FS.readlink(targetPath);
-      if (existingTarget === OMEKA_FILES_PATH) {
-        return;
-      }
+function writeFileSafe(FS, path, content) {
+  const parentDir = path.split("/").slice(0, -1).join("/") || "/";
+  ensureDirSync(FS, parentDir);
+  FS.writeFile(path, typeof content === "string" ? encoder.encode(content) : content);
+}
+
+function readPlaygroundState(FS) {
+  try {
+    const about = FS.analyzePath(PLAYGROUND_CONFIG_PATH);
+    if (!about?.exists) {
+      return null;
     }
-
-    removeNodeIfPresent(FS, targetPath);
-  }
-
-  FS.symlink(OMEKA_FILES_PATH, targetPath);
-}
-
-async function safeUnlink(php, path) {
-  const about = await php.analyzePath(path);
-  if (!about?.exists) {
-    return;
-  }
-
-  await php.unlink(path);
-}
-
-async function readJson(php, path) {
-  const about = await php.analyzePath(path);
-  if (!about?.exists) {
+    const raw = decoder.decode(FS.readFile(PLAYGROUND_CONFIG_PATH));
+    return JSON.parse(raw);
+  } catch {
     return null;
   }
-
-  const raw = await php.readFile(path);
-  return JSON.parse(decoder.decode(raw));
 }
 
-async function appendPhpIniOverrides(php, config) {
-  const about = await php.analyzePath("/php.ini");
-  const existing = about?.exists
-    ? decoder.decode(await php.readFile("/php.ini"))
-    : "";
-
-  const merged = `${existing.replace(/\s*$/u, "\n")}${buildPhpIni(config)}`;
-  await php.writeFile("/php.ini", encoder.encode(merged));
-  await php.writeFile(PLAYGROUND_PREPEND_PATH, encoder.encode(buildPhpPrepend(config)));
+function writePlaygroundState(FS, state) {
+  writeFileSafe(FS, PLAYGROUND_CONFIG_PATH, JSON.stringify(state, null, 2));
 }
 
-export async function bootstrapOmeka({ blueprint, clean = false, config, php, publish, runtimeId }) {
-  const normalizedBlueprint = normalizeBlueprint(blueprint, config);
-  const effectiveConfig = buildEffectivePlaygroundConfig(config, normalizedBlueprint);
+function buildAutologinScript(username) {
+  // Generates a logkey for the admin user and outputs the cookie values as JSON.
+  // We then write them directly to /config/.cookies so the php-cgi-wasm CookieJar
+  // picks them up for subsequent requests.
+  return `<?php
+error_reporting(E_ALL);
+ini_set('display_errors', '1');
 
-  if (clean) {
-    publish("Resetting persisted runtime state.", 0.16);
-    await resetPersistedState(php);
-  }
+define('FS_FOLDER', '${FS_ROOT}');
+require_once FS_FOLDER . '/config.php';
+require_once FS_FOLDER . '/vendor/autoload.php';
 
-  publish("Preparing PHP filesystem layout.", 0.2);
-  await ensureMutableLayout(php);
+use FacturaScripts\\Core\\Model\\User;
 
-  publish("Loading Omeka readonly bundle manifest.", 0.28);
-  const manifest = await fetchManifest();
-  const manifestState = buildManifestState(manifest, runtimeId, effectiveConfig.bundleVersion);
-  const savedState = await readJson(php, PLAYGROUND_CONFIG_PATH);
+header('Content-Type: application/json');
 
-  if (
-    effectiveConfig.resetOnVersionMismatch
-    && savedState?.manifest
-    && JSON.stringify(savedState.manifest) !== JSON.stringify(manifestState)
-  ) {
-    publish("Bundle version changed. Resetting mutable files.", 0.34);
-    await safeUnlink(php, PLAYGROUND_DB_PATH);
-    await safeUnlink(php, PLAYGROUND_CONFIG_PATH);
-  }
+$user = new User();
+if ($user->loadFromCode('${phpString(username)}')) {
+    $user->newLogkey('127.0.0.1', 'playground');
+    $user->save();
 
-  publish("Mounting readonly Omeka core bundle.", 0.4);
-  await mountReadonlyCore(php, manifest, { root: OMEKA_ROOT });
-  await linkMutableFilesDir(php);
+    echo json_encode([
+        'ok' => true,
+        'fsNick' => $user->nick,
+        'fsLogkey' => $user->logkey,
+        'fsLang' => $user->langcode,
+    ]);
+    exit;
+}
 
-  publish("Preparing blueprint modules and themes.", 0.52);
-  const addonsState = await materializeBlueprintAddons({
-    php,
-    blueprint: normalizedBlueprint,
-    omekaRoot: OMEKA_ROOT,
-    publish,
-    config: effectiveConfig,
-  });
+echo json_encode(['ok' => false, 'error' => 'user not found']);
+`;
+}
 
-  publish("Prefetching blueprint media files.", 0.56);
-  const runtimeBlueprint = await cacheBlueprintMediaFiles({
-    php,
-    blueprint: normalizedBlueprint,
-    publish,
-  });
+async function performAutologin(php, config, FS, publish) {
+  publish("Signing in admin user automatically.", 0.85);
+  const scriptPath = `${FS_ROOT}/_playground_autologin.php`;
+  writeFileSafe(FS, scriptPath, buildAutologinScript(config.admin.username));
 
-  publish("Writing SQLite and local config overrides.", 0.6);
-  await php.writeFile(`${OMEKA_ROOT}/config/database.ini`, encoder.encode(buildDatabaseIni()));
-  await php.writeFile(`${OMEKA_ROOT}/config/local.config.php`, encoder.encode(buildLocalConfig(effectiveConfig)));
-  await appendPhpIniOverrides(php, effectiveConfig);
-  await php.writeFile(`${OMEKA_ROOT}/playground-probe.php`, encoder.encode(buildProbeScript()));
+  const response = await php.request(new Request("http://localhost/_playground_autologin.php"));
+  const text = await response.text();
+  try { FS.unlink(scriptPath); } catch { /* ignore */ }
 
-  const probeResponse = await php.request(new Request("https://playground.internal/playground-probe.php"));
-  const probeText = await probeResponse.text();
-  let probe;
   try {
-    probe = JSON.parse(probeText);
-  } catch (error) {
-    const preview = probeText.slice(0, 800);
-    throw new Error(`Probe response was not valid JSON: ${preview}`);
-  }
-
-  if (!probe.available_drivers?.includes("sqlite")) {
-    throw new Error(`SQLite probe failed: ${probeText}`);
-  }
-
-  publish("Running automatic Omeka installer if needed.", 0.64);
-  await php.writeFile(`${OMEKA_ROOT}/playground-install.php`, encoder.encode(buildInstallScript(effectiveConfig, manifestState, runtimeBlueprint, addonsState)));
-
-  let bootstrapComplete = false;
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    const output = await php.request(new Request("https://playground.internal/playground-install.php"));
-    const outputText = await output.text();
-    const outputLines = outputText
-      .split(/\r?\n/gu)
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    for (const line of outputLines) {
-      if (line === "omeka-playground-bootstrap-complete" || line === "omeka-playground-bootstrap-continue") {
-        continue;
-      }
-
-      if (line.startsWith("[debug]")) {
-        publish(line, 0.78);
-        continue;
-      }
-
-      if (line.startsWith("[warning]")) {
-        publish(line, 0.82);
-        continue;
-      }
-
-      publish(`Installer output: ${line}`, 0.74);
+    const result = JSON.parse(text);
+    if (!result.ok) {
+      return { ok: false, warning: `Autologin failed: ${result.error}` };
     }
 
-    if (outputText.includes("omeka-playground-bootstrap-complete")) {
-      bootstrapComplete = true;
-      break;
+    // Inject cookies directly into the php-cgi-wasm CookieJar.
+    // The CookieJar injects them as HTTP_COOKIE env var into every PHP request.
+    const cookieEntries = [
+      `fsNick=${result.fsNick}; path=/`,
+      `fsLogkey=${result.fsLogkey}; path=/`,
+      `fsLang=${result.fsLang}; path=/`,
+    ];
+    for (const entry of cookieEntries) {
+      php.cookieJar.store(entry);
     }
 
-    if (outputText.includes("omeka-playground-bootstrap-continue")) {
-      publish("Reinitializing Omeka after module install.", 0.72);
-      continue;
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, warning: `Autologin script returned unexpected output: ${text.substring(0, 200)}` };
+  }
+}
+
+export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: rawBlueprint, clean, php, publish, runtimeId }) {
+  const blueprint = rawBlueprint
+    ? normalizeBlueprint(rawBlueprint, rawConfig)
+    : normalizeBlueprint({}, rawConfig);
+  const config = buildEffectivePlaygroundConfig(rawConfig, blueprint);
+  const binary = await php.binary;
+  const { FS } = binary;
+
+  publish("Loading FacturaScripts manifest.", 0.20);
+  const manifest = await fetchManifest();
+  const manifestState = buildManifestState(manifest, runtimeId, rawConfig.bundleVersion);
+
+  // Check existing state
+  const existingState = readPlaygroundState(FS);
+  const manifestVersion = `${manifestState.release || ""}:${manifestState.sha256 || ""}`;
+  const versionMatch = existingState?.manifestVersion === manifestVersion;
+  const skipInstall = versionMatch && !clean;
+
+  if (!skipInstall && (clean || (existingState && !versionMatch && rawConfig.resetOnVersionMismatch))) {
+    publish("Cleaning previous state.", 0.22);
+    for (const path of [PLAYGROUND_DB_PATH, PLAYGROUND_CONFIG_PATH]) {
+      if (pathExists(FS, path)) {
+        try { FS.unlink(path); } catch { /* ignore */ }
+      }
+    }
+  }
+
+  // Always mount the VFS — the in-memory filesystem is wiped between sessions
+  publish("Mounting FacturaScripts readonly core.", 0.25);
+  await mountReadonlyCore(php, manifest);
+
+  // Create mutable directory layout
+  // Directories are created directly inside the docroot. The VFS is readonly on
+  // disk but Emscripten's MEMFS overlay allows in-memory writes on top of it.
+  // Symlinks don't work reliably in MEMFS, so we create real directories.
+  publish("Creating mutable directory layout.", 0.40);
+  const mutableDirs = [
+    "/persist/mutable/db",
+    "/persist/mutable/config",
+    "/persist/mutable/session",
+    `${FS_ROOT}/MyFiles`,
+    `${FS_ROOT}/MyFiles/Log`,
+    `${FS_ROOT}/Dinamic`,
+    `${FS_ROOT}/Dinamic/Assets`,
+    `${FS_ROOT}/Dinamic/Assets/CSS`,
+    `${FS_ROOT}/Dinamic/Assets/JS`,
+    `${FS_ROOT}/Dinamic/Assets/Images`,
+    `${FS_ROOT}/Dinamic/Controller`,
+    `${FS_ROOT}/Dinamic/Lib`,
+    `${FS_ROOT}/Dinamic/Model`,
+    `${FS_ROOT}/Dinamic/Table`,
+    `${FS_ROOT}/Dinamic/View`,
+    `${FS_ROOT}/Dinamic/XMLView`,
+    `${FS_ROOT}/Plugins`,
+  ];
+  for (const dir of mutableDirs) {
+    ensureDirSync(FS, dir);
+  }
+
+  // Write config.php
+  publish("Writing config.php.", 0.45);
+  writeFileSafe(FS, `${FS_ROOT}/config.php`, buildConfigPhp(config));
+
+  // Write PHP prepend file
+  publish("Writing PHP prepend file.", 0.48);
+  writeFileSafe(FS, PLAYGROUND_PREPEND_PATH, buildPhpPrepend());
+
+  // Configure php.ini for prepend
+  const phpIniContent = [
+    `auto_prepend_file = ${PLAYGROUND_PREPEND_PATH}`,
+    `session.save_path = /persist/mutable/session`,
+    `date.timezone = ${config.timezone}`,
+    `memory_limit = 256M`,
+    `max_execution_time = 0`,
+    `display_errors = ${config.debug?.enabled ? "On" : "Off"}`,
+    `error_reporting = E_ALL`,
+    "",
+  ].join("\n");
+  // Write php.ini to /config/ which is in PHP_INI_SCAN_DIR (set by php-cgi-wasm)
+  writeFileSafe(FS, "/config/php.ini", phpIniContent);
+
+  // Always run deploy — the in-memory Dinamic/ directory is empty on each session.
+  // Plugins::deploy() generates compiled views, controllers, assets, etc.
+  publish("Running FacturaScripts deploy (compiling views and assets).", 0.55);
+  const installScriptPath = `${FS_ROOT}/_playground_install.php`;
+  writeFileSafe(FS, installScriptPath, buildInstallScript());
+
+  const installResponse = await php.request(new Request("http://localhost/_playground_install.php"));
+  const installText = await installResponse.text();
+  try { FS.unlink(installScriptPath); } catch { /* ignore */ }
+  if (!installText.includes("INSTALL_OK")) {
+    throw new Error(`FacturaScripts deploy failed:\n${installText}`);
+  }
+
+  if (!skipInstall) {
+    // First request to / to trigger initial setup (creates admin user etc.)
+    publish("Triggering first-run setup.", 0.70);
+    const firstRunResponse = await php.request(new Request("http://localhost/"));
+    const firstRunStatus = firstRunResponse.status;
+    if (firstRunStatus >= 500) {
+      const body = await firstRunResponse.text();
+      throw new Error(`First-run request returned ${firstRunStatus}:\n${body}`);
     }
 
-    throw new Error(`Unexpected Omeka bootstrap output: ${outputText}`);
+    // Save playground state
+    publish("Saving playground state.", 0.90);
+    writePlaygroundState(FS, {
+      manifestVersion,
+      runtimeId,
+      installedAt: new Date().toISOString(),
+      admin: {
+        username: config.admin.username,
+      },
+    });
+  } else {
+    publish("Persistent database matches current version. Skipping table creation.", 0.70);
   }
 
-  if (!bootstrapComplete) {
-    throw new Error("Omeka bootstrap did not complete after repeated module install passes.");
-  }
+  let readyPath = blueprint.landingPage || config.landingPath || "/";
 
-  let readyPath = runtimeBlueprint.landingPage || effectiveConfig.landingPath || "/admin";
-
-  if (effectiveConfig.autologin) {
-    const autologin = await performAutologin(php, effectiveConfig, publish);
-    readyPath = autologin.ok ? autologin.path : (autologin.path || readyPath);
-    if (autologin.warning) {
+  if (config.autologin) {
+    const autologin = await performAutologin(php, config, FS, publish);
+    if (autologin.ok) {
+      publish("Autologin successful.", 0.90);
+    } else if (autologin.warning) {
       publish(`[warning] ${autologin.warning}`, 0.92);
     }
   }
 
-  publish("Bootstrap complete. Omeka is ready.", 0.96);
-
-  return {
-    manifest,
-    manifestState,
-    readyPath,
-  };
+  publish("FacturaScripts is ready.", 0.95);
+  return { readyPath };
 }

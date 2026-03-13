@@ -1,62 +1,47 @@
-# Omeka S Playground
+# FacturaScripts Playground
 
-Omeka S Playground runs a full Omeka S instance in the browser with WebAssembly. It is inspired by the execution model of [WordPress Playground](https://wordpress.github.io/wordpress-playground/), but the application, runtime boot process, and `blueprint.json` schema in this repository are all Omeka-specific.
+FacturaScripts Playground ejecuta [FacturaScripts](https://facturascripts.com) completamente en el navegador con WebAssembly. La idea arquitectonica viene de [WordPress Playground](https://wordpress.github.io/wordpress-playground/), pero el runtime, la configuracion y el proceso de arranque de este repositorio estan adaptados a FacturaScripts.
 
-Use this documentation when you need to:
+Usa esta documentacion para:
 
-- understand how the browser runtime is assembled
-- work safely with the default `blueprint.json`
-- extend the project without breaking the readonly-core and persistent-overlay model
-- understand how the GitHub Pages deployment publishes both the app and these docs
+- entender como se monta el runtime en el navegador
+- configurar el playground desde `playground.config.json`
+- ajustar el `blueprint.json` por defecto
+- reconstruir el bundle readonly de FacturaScripts
 
-## Start here
+## Empieza aqui
 
-- [Getting started](getting-started.md) for local setup, key files, and preview commands
-- [WordPress Playground](wordpress-playground.md) for the execution model and project-specific constraints
-- [`blueprint.json`](blueprint-json.md) for the schema, examples, validation steps, and maintenance guidance
-- [Development](development.md) for contributor workflows and docs publishing
+- [Getting started](getting-started.md)
+- [Modelo inspirado en WordPress Playground](wordpress-playground.md)
+- [Referencia de blueprint.json](blueprint-json.md)
+- [Development](development.md)
 
-## What this project does
+## Que hace este proyecto
 
-The application has five layers:
+El proyecto tiene cinco capas:
 
-1. **Shell UI** in `index.html` and `src/shell/main.js`
-2. **Runtime host** in `remote.html` and `src/remote/main.js`
-3. **Request routing** in `sw.js` and `php-worker.js`
-4. **Omeka runtime boot** in `src/runtime/*`
-5. **Local development proxy** in `scripts/dev-server.mjs`
+1. **Shell UI** en `index.html` y `src/shell/main.js`
+2. **Runtime host** en `remote.html` y `src/remote/main.js`
+3. **Routing** en `sw.js` y `php-worker.js`
+4. **Bootstrap de FacturaScripts** en `src/runtime/*`
+5. **Servidor local de desarrollo** en `scripts/dev-server.mjs`
 
-At runtime:
+En ejecucion:
 
-- the readonly Omeka core is mounted from the prebuilt bundle in `assets/omeka/`
-- mutable state lives under `/persist` in browser storage
-- the shell hosts the running site in an iframe and exposes Home, Admin, and Docs navigation
-- the service worker rewrites paths so the app works both locally and under the GitHub Pages subpath `/omeka-s-playground`
+- el core readonly se monta desde `assets/facturascripts/`
+- el estado mutable se guarda en `/persist`
+- la shell embebe FacturaScripts en un `iframe`
+- el service worker reescribe rutas para que funcione tanto en raiz como en subdirectorios
 
-## Relationship to WordPress Playground
+## Configuracion
 
-WordPress Playground is the main architectural reference for this repository. The project borrows the idea of:
+Las dos piezas principales son:
 
-- running PHP in the browser with WebAssembly
-- bootstrapping an application on first load
-- treating configuration as portable blueprint data
-- persisting writable state separately from a readonly application image
+- `playground.config.json`: configuracion global del runtime, usuario admin, locale, timezone y runtimes PHP
+- `assets/blueprints/default.blueprint.json`: configuracion funcional de la instancia que se carga por defecto
 
-What changes here is the payload: this repository boots **Omeka S**, not WordPress, and the browser blueprint format is implemented in `src/shared/blueprint.js` and validated by `assets/blueprints/blueprint-schema.json`.
+## Enlaces utiles
 
-## Why `blueprint.json` matters
-
-The default blueprint at `assets/blueprints/default.blueprint.json` is the easiest way to understand the project. It controls:
-
-- install metadata and defaults
-- the landing page and login credentials
-- users, item sets, items, media, modules, themes, and the default site
-
-The blueprint is loaded into the shell, normalized, and then consumed by the runtime bootstrap. That makes it the main entry point for most contributor changes that affect demo content or first-boot behavior.
-
-## Published documentation
-
-These docs are built with MkDocs Material and published alongside the app on GitHub Pages:
-
-- Playground: <https://ateeducacion.github.io/omeka-s-playground/>
-- Docs: <https://ateeducacion.github.io/omeka-s-playground/docs/>
+- FacturaScripts: <https://facturascripts.com/>
+- Ayuda oficial: <https://facturascripts.com/ayuda>
+- Codigo fuente oficial: <https://github.com/NeoRazorX/facturascripts>

@@ -42,7 +42,7 @@ jobs:
       - name: Prepare runtime assets
         run: make prepare
 
-      - name: Build Omeka bundle
+      - name: Build FacturaScripts bundle
         run: make bundle
 
       - name: Install docs dependencies

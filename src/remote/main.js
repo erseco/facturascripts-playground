@@ -239,7 +239,7 @@ async function bootstrapRemote() {
   emit(scopeId, {
     kind: "progress",
     title: "Runtime host ready",
-    detail: "The embedded Omeka iframe is loading.",
+    detail: "The embedded FacturaScripts iframe is loading.",
     progress: 0.18,
   });
 

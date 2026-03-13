@@ -1,7 +1,7 @@
 import { PhpCgiWorker } from "../../vendor/php-cgi-wasm/PhpCgiWorker.js";
 import { PGlite } from "../../vendor/pglite/index.js";
 import { resolveSharedLibs } from "./runtime-registry.js";
-import { OMEKA_ROOT } from "./bootstrap.js";
+import { FS_ROOT } from "./bootstrap.js";
 
 const MIME_TYPES = {
   css: "text/css; charset=utf-8",
@@ -22,7 +22,7 @@ export function createPhpRuntime(runtime, options = {}) {
   return new PhpCgiWorker({
     PGlite,
     prefix: "/",
-    docroot: OMEKA_ROOT,
+    docroot: FS_ROOT,
     sharedLibs: resolveSharedLibs(runtime),
     types: MIME_TYPES,
     rewrite: (pathname) => pathname,

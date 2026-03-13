@@ -1,11 +1,11 @@
 {
-  "name": "omeka-s-playground",
+  "name": "facturascripts-playground",
   "private": true,
   "type": "module",
   "scripts": {
     "prepare-runtime": "node ./scripts/prepare-runtime.mjs",
     "sync-browser-deps": "node ./scripts/sync-browser-deps.mjs",
-    "bundle": "./scripts/build-omeka-bundle.sh"
+    "bundle": "./scripts/build-facturascripts-bundle.sh"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.14",

@@ -1,6 +1,6 @@
 import { loadPlaygroundConfig } from "./src/shared/config.js";
 import { createPhpBridgeChannel, createShellChannel } from "./src/shared/protocol.js";
-import { bootstrapOmeka } from "./src/runtime/bootstrap.js";
+import { bootstrapFacturaScripts } from "./src/runtime/bootstrap.js";
 import { createPhpRuntime } from "./src/runtime/php-loader.js";
 import { installOutboundFetchPolicy } from "./src/runtime/networking.js";
 
@@ -93,13 +93,13 @@ async function getRuntimeState() {
     const publish = (detail, progress) => {
       postShell({
         kind: "progress",
-        title: "Bootstrapping Omeka",
+        title: "Bootstrapping FacturaScripts",
         detail,
         progress,
       });
     };
 
-    const bootstrapState = await bootstrapOmeka({
+    const bootstrapState = await bootstrapFacturaScripts({
       config,
       blueprint: activeBlueprint,
       clean: forceCleanBoot,
@@ -110,7 +110,7 @@ async function getRuntimeState() {
 
     postShell({
       kind: "ready",
-      detail: `Omeka bootstrapped for ${runtime.label}.`,
+      detail: `FacturaScripts bootstrapped for ${runtime.label}.`,
       path: bootstrapState.readyPath || activeBlueprint?.landingPage || config.landingPath,
     });
 

@@ -1,39 +1,20 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Omeka S Playground</title>
+    <title>FacturaScripts Playground</title>
     <meta
       name="description"
-      content="Omeka S running in your browser for learning, testing, and prototyping digital collections."
+      content="FacturaScripts running in your browser for learning, testing, and prototyping invoicing and accounting."
     >
     <meta property="og:type" content="website">
-    <meta property="og:site_name" content="Omeka S Playground">
-    <meta property="og:title" content="Omeka S Playground">
+    <meta property="og:site_name" content="FacturaScripts Playground">
+    <meta property="og:title" content="FacturaScripts Playground">
     <meta
       property="og:description"
-      content="Omeka S running in your browser for learning, testing, and prototyping digital collections."
+      content="FacturaScripts running in your browser for learning, testing, and prototyping invoicing and accounting."
     >
-    <meta property="og:url" content="https://ateeducacion.github.io/omeka-s-playground/">
-    <meta
-      property="og:image"
-      content="https://ateeducacion.github.io/omeka-s-playground/ogimage.png"
-    >
-    <meta property="og:image:type" content="image/png">
-    <meta property="og:image:width" content="1200">
-    <meta property="og:image:height" content="600">
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Omeka S Playground">
-    <meta
-      name="twitter:description"
-      content="Omeka S running in your browser for learning, testing, and prototyping digital collections."
-    >
-    <meta
-      name="twitter:image"
-      content="https://ateeducacion.github.io/omeka-s-playground/ogimage.png"
-    >
-    <meta name="twitter:image:alt" content="Omeka S Playground">
     <link rel="icon" type="image/x-icon" href="./favicon.ico">
     <link rel="stylesheet" href="./src/styles/app.css">
   </head>
@@ -42,14 +23,14 @@
       <header class="browser-toolbar" aria-label="Playground toolbar">
         <div class="browser-toolbar__address">
           <form id="address-form" class="address-form">
-            <div class="toolbar-brand" aria-label="Omeka S Playground">
-              <img src="./OmekaBadge.svg" alt="Omeka S" class="toolbar-brand__logo">
+            <div class="toolbar-brand" aria-label="FacturaScripts Playground">
+              <strong class="toolbar-brand__text">FacturaScripts</strong>
             </div>
             <button type="button" id="refresh-button" class="icon-button" aria-label="Restart runtime" title="Restart runtime">
               <span aria-hidden="true">↻</span>
             </button>
             <div class="address-form__input">
-              <input id="address-input" type="text" spellcheck="false" value="/" aria-label="URL inside the Omeka site">
+              <input id="address-input" type="text" spellcheck="false" value="/" aria-label="URL inside the FacturaScripts site">
             </div>
             <input type="submit" tabindex="-1" hidden>
           </form>
@@ -57,7 +38,6 @@
         <div class="browser-toolbar__actions">
           <button type="button" id="home-button" class="toolbar-link">Home</button>
           <button type="button" id="admin-button" class="toolbar-link">Admin</button>
-          <a class="toolbar-link" href="https://ateeducacion.github.io/omeka-s-playground/docs/" target="_blank" rel="noreferrer">Docs</a>
           <button type="button" id="panel-toggle-button" class="icon-button" aria-label="Open settings panel" aria-expanded="false" title="Open settings panel">
             <span aria-hidden="true">☰</span>
           </button>
@@ -66,13 +46,13 @@
 
       <div id="workspace" class="workspace is-panel-collapsed">
         <section class="viewport">
-          <iframe id="site-frame" title="Omeka S Playground" loading="eager"></iframe>
+          <iframe id="site-frame" title="FacturaScripts Playground" loading="eager"></iframe>
         </section>
 
         <aside id="side-panel" class="side-panel is-collapsed" aria-label="Playground panel">
           <div class="side-panel__header">
             <div>
-              <strong>Omeka Playground</strong>
+              <strong>FacturaScripts Playground</strong>
               <span>Browser runtime controls</span>
             </div>
           </div>
@@ -114,14 +94,14 @@
 
           <footer class="side-panel__footer">
             <p>
-              Made with <span aria-label="love" title="love">♥</span> by
-              <a href="https://www3.gobiernodecanarias.org/medusa/ecoescuela/ate/" target="_blank" rel="noreferrer">
-                Área de Tecnología Educativa
+              Powered by
+              <a href="https://facturascripts.com" target="_blank" rel="noreferrer">
+                FacturaScripts
               </a>
             </p>
             <a
               class="side-panel__footer-link"
-              href="https://github.com/ateeducacion/omeka-s-playground"
+              href="https://github.com/erseco/facturascripts"
               target="_blank"
               rel="noreferrer"
               aria-label="GitHub repository"

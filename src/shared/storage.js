@@ -1,4 +1,4 @@
-const SCOPE_PREFIX = "omeka-playground:";
+const SCOPE_PREFIX = "facturascripts-playground:";
 
 export function buildScopeKey(scopeId, suffix) {
   return `${SCOPE_PREFIX}${scopeId}:${suffix}`;

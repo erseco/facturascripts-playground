@@ -9,8 +9,8 @@ const repoDir = resolve(scriptDir, "..");
 
 for (const path of [
   resolve(repoDir, ".cache"),
-  resolve(repoDir, ".cache/omeka-source"),
-  resolve(repoDir, "assets/omeka"),
+  resolve(repoDir, ".cache/facturascripts-source"),
+  resolve(repoDir, "assets/facturascripts"),
   resolve(repoDir, "assets/manifests"),
   resolve(repoDir, "vendor"),
 ]) {

@@ -47,7 +47,7 @@ let remoteFrameBooted = false;
 let uiLocked = true;
 let remoteReloadToken = 0;
 let pendingCleanBoot = hasBlueprintUrlOverride(window.location.href);
-const CONTROL_RELOAD_KEY = `omeka-playground:${scopeId}:sw-controlled`;
+const CONTROL_RELOAD_KEY = `facturascripts-playground:${scopeId}:sw-controlled`;
 
 function appendLog(message, isError = false) {
   const line = `[${new Date().toISOString()}] ${message}`;
@@ -176,7 +176,6 @@ function restartRuntime() {
   setUiLocked(true);
   setStatus("Restarting runtime", "Reloading the runtime host, service worker, and PHP worker.", 0.08);
   appendLog(`Restarting runtime for ${currentRuntimeId}`);
-  // Force a fresh remote host bootstrap instead of a plain iframe page reload.
   els.frame.src = "about:blank";
   void updateFrame();
 }
@@ -186,7 +185,7 @@ function navigateHome() {
 }
 
 function navigateAdmin() {
-  navigateWithinRuntime("/admin");
+  navigateWithinRuntime("/AdminPlugins");
 }
 
 function setActivePanel(panel) {
@@ -225,7 +224,7 @@ function exportBlueprint() {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `omeka-playground.blueprint.json`;
+  link.download = `facturascripts-playground.blueprint.json`;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -274,7 +273,7 @@ function bindShellChannel() {
         appendLog(`${message.title}: ${message.detail}`);
         break;
       case "ready":
-        setStatus("Runtime ready", message.detail || "Omeka S is ready.", 1);
+        setStatus("Runtime ready", message.detail || "FacturaScripts is ready.", 1);
         remoteFrameBooted = true;
         setUiLocked(false);
         currentPath = message.path || currentPath;
