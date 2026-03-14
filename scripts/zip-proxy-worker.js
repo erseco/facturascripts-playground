@@ -74,12 +74,16 @@ export default {
     }
 
     try {
+      const acceptHeader = isFacturaScriptsPluginPage(parsedTargetUrl)
+        ? "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"
+        : "application/zip, application/octet-stream;q=0.9, */*;q=0.8";
+
       const upstreamResponse = await fetch(parsedTargetUrl.toString(), {
         method: "GET",
         redirect: "follow",
         headers: {
           "User-Agent": "zip-proxy-worker",
-          Accept: "application/zip, application/octet-stream;q=0.9, */*;q=0.8",
+          Accept: acceptHeader,
         },
       });
 

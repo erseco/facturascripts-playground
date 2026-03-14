@@ -94,9 +94,12 @@ describe("buildWizardScript", () => {
     assert.ok(!script.includes("L'Empresa"));
   });
 
-  it("does not include redundant Plugins::deploy call", () => {
+  it("includes second deploy after Dinamic model loading", () => {
     const script = buildWizardScript(baseConfig);
-    assert.ok(!script.includes("Plugins::deploy(true, true)"));
+    assert.ok(
+      script.includes("deploy(true, true)"),
+      "Script should include a deploy call after loading Dinamic models",
+    );
   });
 
   it("sets user homepage to Dashboard", () => {

@@ -539,23 +539,30 @@ if (${defaultplan}) {
     }
 }
 
-// Step 3: Load all Dinamic/Model classes to trigger remaining table creation
-$dinamicModelDir = FS_FOLDER . '/Dinamic/Model/';
+// Step 3: Load ALL Dinamic/Model classes to trigger remaining table creation.
+// We use scandir() instead of glob() because glob() may not work in WASM MEMFS.
+// This mirrors FacturaScripts\\Core\\Controller\\Wizard::saveStep3().
+$dinamicModelDir = FS_FOLDER . '/Dinamic/Model';
 if (is_dir($dinamicModelDir)) {
-    foreach (glob($dinamicModelDir . '*.php') as $file) {
-        $className = 'FacturaScripts\\\\Dinamic\\\\Model\\\\' . basename($file, '.php');
-        if (class_exists($className)) {
+    $files = @scandir($dinamicModelDir);
+    if (is_array($files)) {
+        foreach ($files as $fileName) {
+            if (substr($fileName, -4) !== '.php') {
+                continue;
+            }
+            $className = 'FacturaScripts\\\\Dinamic\\\\Model\\\\' . substr($fileName, 0, -4);
             try {
-                $obj = new $className();
-                if (method_exists($obj, 'count')) {
-                    $obj->count();
-                }
+                new $className();
             } catch (\\Throwable $e) {
                 // Ignore errors from individual model loading
             }
         }
     }
 }
+
+// Run deploy again after all models are loaded (mirrors real Wizard step 3)
+$pluginManager = new FacturaScripts\\\\Core\\\\Plugins();
+$pluginManager->deploy(true, true);
 
 // Set default employee role
 Tools::settingsSet('default', 'codrol', 'employee');
