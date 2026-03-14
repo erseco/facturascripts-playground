@@ -543,18 +543,22 @@ if (${defaultplan}) {
 // We use scandir() instead of glob() because glob() may not work in WASM MEMFS.
 // This mirrors FacturaScripts\\Core\\Controller\\Wizard::saveStep3().
 $dinamicModelDir = FS_FOLDER . '/Dinamic/Model';
+$modelDebug = ['dir_exists' => is_dir($dinamicModelDir), 'loaded' => [], 'errors' => []];
 if (is_dir($dinamicModelDir)) {
     $files = @scandir($dinamicModelDir);
+    $modelDebug['scandir_count'] = is_array($files) ? count($files) : 'false';
     if (is_array($files)) {
         foreach ($files as $fileName) {
             if (substr($fileName, -4) !== '.php') {
                 continue;
             }
-            $className = 'FacturaScripts\\\\Dinamic\\\\Model\\\\' . substr($fileName, 0, -4);
+            $modelName = substr($fileName, 0, -4);
+            $className = 'FacturaScripts\\\\Dinamic\\\\Model\\\\' . $modelName;
             try {
                 new $className();
+                $modelDebug['loaded'][] = $modelName;
             } catch (\\Throwable $e) {
-                // Ignore errors from individual model loading
+                $modelDebug['errors'][] = $modelName . ': ' . $e->getMessage();
             }
         }
     }
@@ -570,7 +574,7 @@ Tools::settingsSet('default', 'codrol', 'employee');
 // Save settings
 Tools::settingsSave();
 
-echo json_encode(['ok' => true, 'skipped' => false]);
+echo json_encode(['ok' => true, 'skipped' => false, 'modelDebug' => $modelDebug]);
 `;
 }
 
@@ -893,6 +897,12 @@ export async function bootstrapFacturaScripts({
 
     try {
       const wizardResult = JSON.parse(wizardText);
+      if (wizardResult.modelDebug) {
+        console.log(
+          "[wizard] Model debug:",
+          JSON.stringify(wizardResult.modelDebug),
+        );
+      }
       if (!wizardResult.ok) {
         throw new Error(`Wizard initialization failed: ${wizardText}`);
       }
