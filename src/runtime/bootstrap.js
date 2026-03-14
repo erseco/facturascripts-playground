@@ -539,28 +539,6 @@ if (${defaultplan}) {
     }
 }
 
-// Step 3: Load ALL Dinamic/Model classes to trigger table creation.
-// This mirrors FacturaScripts\\Core\\Controller\\Wizard::saveStep3() exactly.
-$modelsFolder = Tools::folder('Dinamic', 'Model');
-$modelNames = [];
-foreach (Tools::folderScan($modelsFolder) as $fileName) {
-    if ('.php' === substr($fileName, -4)) {
-        $modelNames[] = substr($fileName, 0, -4);
-    }
-}
-foreach ($modelNames as $name) {
-    $className = 'FacturaScripts\\\\Dinamic\\\\Model\\\\' . $name;
-    try {
-        new $className();
-    } catch (\\Throwable $e) {
-        // Ignore errors from individual model loading
-    }
-}
-
-// Run deploy again after all models are loaded (mirrors real Wizard step 3)
-$pluginManager = new FacturaScripts\\Core\\Plugins();
-$pluginManager->deploy(true, true);
-
 // Set default employee role
 Tools::settingsSet('default', 'codrol', 'employee');
 
@@ -699,6 +677,49 @@ if ($user->loadFromCode('${phpString(username)}')) {
 
 echo json_encode(['ok' => false, 'error' => 'user not found']);
 `;
+}
+
+async function initAllModels(php, FS) {
+  const scriptPath = `${FS_ROOT}/_playground_init_models.php`;
+  const script = `<?php
+error_reporting(E_ALL);
+ini_set('display_errors', '1');
+
+define('FS_FOLDER', '${FS_ROOT}');
+require_once FS_FOLDER . '/config.php';
+require_once FS_FOLDER . '/vendor/autoload.php';
+
+use FacturaScripts\\Core\\Tools;
+
+header('Content-Type: application/json');
+
+$modelsFolder = Tools::folder('Dinamic', 'Model');
+$loaded = 0;
+foreach (Tools::folderScan($modelsFolder) as $fileName) {
+    if ('.php' !== substr($fileName, -4)) {
+        continue;
+    }
+    $className = 'FacturaScripts\\\\Dinamic\\\\Model\\\\' . substr($fileName, 0, -4);
+    try {
+        new $className();
+        $loaded++;
+    } catch (\\Throwable $e) {
+        // skip
+    }
+}
+
+echo json_encode(['ok' => true, 'models' => $loaded]);
+`;
+  writeFileSafe(FS, scriptPath, script);
+  const response = await php.request(
+    new Request("http://localhost/_playground_init_models.php"),
+  );
+  await response.text();
+  try {
+    FS.unlink(scriptPath);
+  } catch {
+    /* ignore */
+  }
 }
 
 async function performAutologin(php, config, FS, publish) {
