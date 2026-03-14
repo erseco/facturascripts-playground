@@ -205,6 +205,39 @@ function normalizeSeedCollection(input, primaryKey) {
   });
 }
 
+export function normalizeInstall(input) {
+  const defaults = {
+    codpais: "ESP",
+    empresa: "Empresa Playground",
+    cifnif: "00000014Z",
+    tipoidfiscal: "",
+    direccion: "",
+    codpostal: "",
+    ciudad: "",
+    provincia: "",
+    regimeniva: "General",
+    codimpuesto: "",
+    defaultplan: true,
+    costpricepolicy: "",
+    ventasinstock: false,
+    updatesupplierprices: true,
+  };
+
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return { ...defaults };
+  }
+
+  const result = { ...defaults };
+  for (const key of Object.keys(input)) {
+    if (key in defaults) {
+      result[key] = typeof defaults[key] === "boolean"
+        ? input[key] === true
+        : String(input[key] ?? defaults[key]);
+    }
+  }
+  return result;
+}
+
 function normalizeSeed(input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) {
     return {
@@ -252,6 +285,7 @@ export function buildDefaultBlueprint(config) {
       suppliers: [],
       products: [],
     },
+    install: normalizeInstall(undefined),
   };
 }
 
@@ -283,6 +317,7 @@ export function normalizeBlueprint(input, config) {
     },
     plugins: normalizePluginCollection(blueprint.plugins),
     seed: normalizeSeed(blueprint.seed),
+    install: normalizeInstall(blueprint.install),
   };
 }
 
@@ -301,6 +336,7 @@ export function buildEffectivePlaygroundConfig(config, blueprint) {
       email: config.admin.email,
       password: normalized.login.password,
     },
+    install: normalized.install,
   };
 }
 

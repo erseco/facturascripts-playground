@@ -167,6 +167,26 @@
         }
       }
     },
+    "install": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "codpais": { "type": "string" },
+        "empresa": { "type": "string" },
+        "cifnif": { "type": "string" },
+        "tipoidfiscal": { "type": "string" },
+        "direccion": { "type": "string" },
+        "codpostal": { "type": "string" },
+        "ciudad": { "type": "string" },
+        "provincia": { "type": "string" },
+        "regimeniva": { "type": "string" },
+        "codimpuesto": { "type": "string" },
+        "defaultplan": { "type": "boolean" },
+        "costpricepolicy": { "type": "string" },
+        "ventasinstock": { "type": "boolean" },
+        "updatesupplierprices": { "type": "boolean" }
+      }
+    },
     "settings": {
       "type": "object"
     }

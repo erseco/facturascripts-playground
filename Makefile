@@ -12,7 +12,7 @@ FS_REF_BRANCH ?= feature/add-sqlite-support
 #   make serve PORT=9090
 #   make bundle FS_REF=https://github.com/<org>/facturascripts.git FS_REF_BRANCH=<branch>
 
-.PHONY: help up deps prepare bundle serve clean reset
+.PHONY: help up deps prepare bundle serve test clean reset
 
 help:
 	@printf '%s\n' \
@@ -23,6 +23,7 @@ help:
 		'  make bundle    Build the readonly FacturaScripts bundle' \
 		'  make serve     Start the local dev server' \
 		'  make up        Run bundle + serve' \
+		'  make test      Run unit tests' \
 		'  make clean     Remove generated caches and bundle artifacts' \
 		'  make reset     Alias of clean plus cache reset' \
 		'' \
@@ -39,6 +40,9 @@ prepare: deps
 
 bundle: prepare
 	FS_REF=$(FS_REF) FS_REF_BRANCH=$(FS_REF_BRANCH) npm run bundle
+
+test:
+	node --test tests/*.test.mjs
 
 serve:
 	PORT=$(PORT) node ./scripts/dev-server.mjs

@@ -369,6 +369,202 @@ echo 'INSTALL_OK';
 `;
 }
 
+export function buildWizardScript(config) {
+  const inst = config.install || {};
+  const codpais = phpString(inst.codpais || "ESP");
+  const empresa = phpString(inst.empresa || "Empresa Playground");
+  const cifnif = phpString(inst.cifnif || "00000014Z");
+  const tipoidfiscal = phpString(inst.tipoidfiscal || "");
+  const direccion = phpString(inst.direccion || "");
+  const codpostal = phpString(inst.codpostal || "");
+  const ciudad = phpString(inst.ciudad || "");
+  const provincia = phpString(inst.provincia || "");
+  const regimeniva = phpString(inst.regimeniva || "General");
+  const codimpuesto = phpString(inst.codimpuesto || "");
+  const defaultplan = phpBoolean(inst.defaultplan !== false);
+  const costpricepolicy = phpString(inst.costpricepolicy || "");
+  const ventasinstock = phpBoolean(inst.ventasinstock === true);
+  const updatesupplierprices = phpBoolean(inst.updatesupplierprices !== false);
+  const adminUser = phpString(config.admin?.username || "admin");
+  const adminEmail = phpString(config.admin?.email || "");
+
+  return `<?php
+error_reporting(E_ALL);
+ini_set('display_errors', '1');
+
+define('FS_FOLDER', '${FS_ROOT}');
+
+require_once FS_FOLDER . '/config.php';
+require_once FS_FOLDER . '/vendor/autoload.php';
+
+use FacturaScripts\\Core\\Tools;
+use FacturaScripts\\Core\\Model\\Almacen;
+use FacturaScripts\\Core\\Model\\AttachedFile;
+use FacturaScripts\\Core\\Model\\Diario;
+use FacturaScripts\\Core\\Model\\Empresa;
+use FacturaScripts\\Core\\Model\\EstadoDocumento;
+use FacturaScripts\\Core\\Model\\FormaPago;
+use FacturaScripts\\Core\\Model\\Impuesto;
+use FacturaScripts\\Core\\Model\\Provincia;
+use FacturaScripts\\Core\\Model\\Retencion;
+use FacturaScripts\\Core\\Model\\Serie;
+use FacturaScripts\\Core\\Model\\User;
+
+header('Content-Type: application/json');
+
+// Idempotency guard: if taxes already exist, the wizard has already run
+$impuesto = new Impuesto();
+if ($impuesto->count() > 0) {
+    echo json_encode(['ok' => true, 'skipped' => true]);
+    exit;
+}
+
+$codpais = '${codpais}';
+
+// Step 1: Load country defaults
+$defaultsFile = FS_FOLDER . '/Dinamic/Data/Codpais/' . $codpais . '/default.json';
+if (!file_exists($defaultsFile)) {
+    $defaultsFile = FS_FOLDER . '/Core/Data/Codpais/' . $codpais . '/default.json';
+}
+
+$countryDefaults = [];
+if (file_exists($defaultsFile)) {
+    $content = file_get_contents($defaultsFile);
+    if ($content !== false) {
+        $countryDefaults = json_decode($content, true) ?: [];
+    }
+}
+
+// Apply country defaults to settings
+$settingsKeys = ['coddivisa', 'codimpuesto', 'codpago', 'codserie', 'tipoidfiscal'];
+foreach ($settingsKeys as $key) {
+    if (isset($countryDefaults[$key]) && $countryDefaults[$key] !== '') {
+        Tools::settingsSet('default', $key, $countryDefaults[$key]);
+    }
+}
+
+// Initialize models (triggers install SQL for each)
+$models = [
+    new AttachedFile(),
+    new Diario(),
+    new EstadoDocumento(),
+    new FormaPago(),
+    new Impuesto(),
+    new Retencion(),
+    new Serie(),
+    new Provincia(),
+];
+foreach ($models as $model) {
+    // Calling count() or any query triggers the install() method
+    $model->count();
+}
+
+// Update empresa (company)
+$empresa = new Empresa();
+if ($empresa->loadFromCode(1)) {
+    $empresa->nombre = '${empresa}';
+    $empresa->nombrecorto = '${empresa}';
+    $empresa->cifnif = '${cifnif}';
+    $empresa->tipoidfiscal = '${tipoidfiscal}' ?: ($countryDefaults['tipoidfiscal'] ?? '');
+    $empresa->direccion = '${direccion}';
+    $empresa->codpostal = '${codpostal}';
+    $empresa->ciudad = '${ciudad}';
+    $empresa->provincia = '${provincia}';
+    $empresa->codpais = $codpais;
+    $empresa->email = '${adminEmail}';
+    $empresa->regimeniva = '${regimeniva}';
+    $empresa->save();
+}
+
+// Find or create warehouse and link to empresa
+$almacen = new Almacen();
+if (!$almacen->loadFromCode($almacen->primaryColumnValue())) {
+    // Get the first warehouse
+    $almacenes = $almacen->all([], [], 0, 1);
+    if (!empty($almacenes)) {
+        $almacen = $almacenes[0];
+    }
+}
+
+if ($almacen->exists()) {
+    $almacen->codpais = $codpais;
+    $almacen->ciudad = '${ciudad}';
+    $almacen->provincia = '${provincia}';
+    $almacen->direccion = '${direccion}';
+    $almacen->codpostal = '${codpostal}';
+    $almacen->idempresa = $empresa->idempresa ?? 1;
+    $almacen->save();
+
+    Tools::settingsSet('default', 'codalmacen', $almacen->codalmacen);
+    Tools::settingsSet('default', 'idempresa', $almacen->idempresa);
+}
+
+// Update admin user
+$user = new User();
+if ($user->loadFromCode('${adminUser}')) {
+    $email = '${adminEmail}';
+    if ($email !== '') {
+        $user->email = $email;
+    }
+    $user->homepage = 'Dashboard';
+    $user->save();
+}
+
+// Set additional settings
+$codimpuestoVal = '${codimpuesto}';
+if ($codimpuestoVal !== '') {
+    Tools::settingsSet('default', 'codimpuesto', $codimpuestoVal);
+}
+$costpricepolicyVal = '${costpricepolicy}';
+if ($costpricepolicyVal !== '') {
+    Tools::settingsSet('default', 'costpricepolicy', $costpricepolicyVal);
+}
+Tools::settingsSet('default', 'updatesupplierprices', ${updatesupplierprices});
+Tools::settingsSet('default', 'ventasinstock', ${ventasinstock});
+
+// Import default accounting plan if requested
+if (${defaultplan}) {
+    $planFile = FS_FOLDER . '/Dinamic/Data/Codpais/' . $codpais . '/plan.csv';
+    if (!file_exists($planFile)) {
+        $planFile = FS_FOLDER . '/Core/Data/Codpais/' . $codpais . '/plan.csv';
+    }
+    if (file_exists($planFile)) {
+        $importClass = 'FacturaScripts\\\\Core\\\\Lib\\\\Accounting\\\\AccountingPlanImport';
+        if (class_exists($importClass)) {
+            $importer = new $importClass();
+            $importer->importCSV($planFile, '0001');
+        }
+    }
+}
+
+// Step 3: Load all Dinamic/Model classes to trigger remaining table creation
+$dinamicModelDir = FS_FOLDER . '/Dinamic/Model/';
+if (is_dir($dinamicModelDir)) {
+    foreach (glob($dinamicModelDir . '*.php') as $file) {
+        $className = 'FacturaScripts\\\\Dinamic\\\\Model\\\\' . basename($file, '.php');
+        if (class_exists($className)) {
+            try {
+                $obj = new $className();
+                if (method_exists($obj, 'count')) {
+                    $obj->count();
+                }
+            } catch (\\Throwable $e) {
+                // Ignore errors from individual model loading
+            }
+        }
+    }
+}
+
+// Set default employee role
+Tools::settingsSet('default', 'codrol', 'employee');
+
+// Save settings
+Tools::settingsSave();
+
+echo json_encode(['ok' => true, 'skipped' => false]);
+`;
+}
+
 function buildProbeScript() {
   return `<?php
 $ok = true;
@@ -624,7 +820,7 @@ export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: ra
 
   if (!skipInstall) {
     // First request to / to trigger initial setup (creates admin user etc.)
-    publish("Triggering first-run setup.", 0.70);
+    publish("Triggering first-run setup.", 0.65);
     const firstRunResponse = await php.request(new Request("http://localhost/"));
     const firstRunStatus = firstRunResponse.status;
     if (firstRunStatus >= 500) {
@@ -632,8 +828,29 @@ export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: ra
       throw new Error(`First-run request returned ${firstRunStatus}:\n${body}`);
     }
 
+    // Run wizard-equivalent initialization (taxes, payment methods, company data, etc.)
+    publish("Initializing company, taxes, and base data.", 0.72);
+    const wizardScriptPath = `${FS_ROOT}/_playground_wizard.php`;
+    writeFileSafe(FS, wizardScriptPath, buildWizardScript(config));
+
+    const wizardResponse = await php.request(new Request("http://localhost/_playground_wizard.php"));
+    const wizardText = await wizardResponse.text();
+    try { FS.unlink(wizardScriptPath); } catch { /* ignore */ }
+
+    try {
+      const wizardResult = JSON.parse(wizardText);
+      if (!wizardResult.ok) {
+        throw new Error(`Wizard initialization failed: ${wizardText}`);
+      }
+    } catch (err) {
+      if (err instanceof SyntaxError) {
+        throw new Error(`Wizard script returned unexpected output:\n${wizardText.substring(0, 500)}`);
+      }
+      throw err;
+    }
+
     // Save playground state
-    publish("Saving playground state.", 0.90);
+    publish("Saving playground state.", 0.85);
     writePlaygroundState(FS, {
       manifestVersion,
       runtimeId,
