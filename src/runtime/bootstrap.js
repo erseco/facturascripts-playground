@@ -539,28 +539,21 @@ if (${defaultplan}) {
     }
 }
 
-// Step 3: Load ALL Dinamic/Model classes to trigger remaining table creation.
-// We use scandir() instead of glob() because glob() may not work in WASM MEMFS.
-// This mirrors FacturaScripts\\Core\\Controller\\Wizard::saveStep3().
-$dinamicModelDir = FS_FOLDER . '/Dinamic/Model';
-$modelDebug = ['dir_exists' => is_dir($dinamicModelDir), 'loaded' => [], 'errors' => []];
-if (is_dir($dinamicModelDir)) {
-    $files = @scandir($dinamicModelDir);
-    $modelDebug['scandir_count'] = is_array($files) ? count($files) : 'false';
-    if (is_array($files)) {
-        foreach ($files as $fileName) {
-            if (substr($fileName, -4) !== '.php') {
-                continue;
-            }
-            $modelName = substr($fileName, 0, -4);
-            $className = 'FacturaScripts\\\\Dinamic\\\\Model\\\\' . $modelName;
-            try {
-                new $className();
-                $modelDebug['loaded'][] = $modelName;
-            } catch (\\Throwable $e) {
-                $modelDebug['errors'][] = $modelName . ': ' . $e->getMessage();
-            }
-        }
+// Step 3: Load ALL Dinamic/Model classes to trigger table creation.
+// This mirrors FacturaScripts\\Core\\Controller\\Wizard::saveStep3() exactly.
+$modelsFolder = Tools::folder('Dinamic', 'Model');
+$modelNames = [];
+foreach (Tools::folderScan($modelsFolder) as $fileName) {
+    if ('.php' === substr($fileName, -4)) {
+        $modelNames[] = substr($fileName, 0, -4);
+    }
+}
+foreach ($modelNames as $name) {
+    $className = 'FacturaScripts\\\\Dinamic\\\\Model\\\\' . $name;
+    try {
+        new $className();
+    } catch (\\Throwable $e) {
+        // Ignore errors from individual model loading
     }
 }
 
@@ -574,7 +567,7 @@ Tools::settingsSet('default', 'codrol', 'employee');
 // Save settings
 Tools::settingsSave();
 
-echo json_encode(['ok' => true, 'skipped' => false, 'modelDebug' => $modelDebug]);
+echo json_encode(['ok' => true, 'skipped' => false]);
 `;
 }
 
@@ -897,12 +890,6 @@ export async function bootstrapFacturaScripts({
 
     try {
       const wizardResult = JSON.parse(wizardText);
-      if (wizardResult.modelDebug) {
-        console.log(
-          "[wizard] Model debug:",
-          JSON.stringify(wizardResult.modelDebug),
-        );
-      }
       if (!wizardResult.ok) {
         throw new Error(`Wizard initialization failed: ${wizardText}`);
       }
@@ -940,6 +927,13 @@ export async function bootstrapFacturaScripts({
     config,
     manifestVersion,
   });
+
+  // After all plugins are installed and enabled (which triggers deploy and clears
+  // the checked_tables cache), we must init ALL Dinamic models one final time to
+  // ensure every table exists in SQLite. Without this, the first page load may
+  // hit models whose tables haven't been verified yet, showing "table not found".
+  publish("Verifying all database tables.", 0.88);
+  await initAllModels(php, FS);
 
   const readyPath = blueprint.landingPage || config.landingPath || "/";
 
