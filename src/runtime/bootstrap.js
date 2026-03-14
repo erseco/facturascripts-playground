@@ -1,20 +1,22 @@
-import { buildEffectivePlaygroundConfig, normalizeBlueprint } from "../shared/blueprint.js";
+import {
+  buildEffectivePlaygroundConfig,
+  normalizeBlueprint,
+} from "../shared/blueprint.js";
 import { materializeBlueprintAddons } from "./addons.js";
-import { fetchManifest, buildManifestState } from "./manifest.js";
+import { buildManifestState, fetchManifest } from "./manifest.js";
 import { mountReadonlyCore } from "./vfs.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 export const PLAYGROUND_DB_PATH = "/persist/mutable/db/facturascripts.sqlite";
-export const PLAYGROUND_CONFIG_PATH = "/persist/mutable/config/playground-state.json";
+export const PLAYGROUND_CONFIG_PATH =
+  "/persist/mutable/config/playground-state.json";
 export const PLAYGROUND_PREPEND_PATH = "/config/playground-prepend.php";
 export const FS_ROOT = "/www/facturascripts";
 
 function phpString(value) {
-  return String(value)
-    .replaceAll("\\", "\\\\")
-    .replaceAll("'", "\\'");
+  return String(value).replaceAll("\\", "\\\\").replaceAll("'", "\\'");
 }
 
 function phpBoolean(value) {
@@ -369,7 +371,185 @@ echo 'INSTALL_OK';
 `;
 }
 
-function buildProbeScript() {
+export function buildWizardScript(config) {
+  const inst = config.install || {};
+  const codpais = phpString(inst.codpais || "ESP");
+  const empresa = phpString(inst.empresa || "Empresa Playground");
+  const cifnif = phpString(inst.cifnif || "00000014Z");
+  const tipoidfiscal = phpString(inst.tipoidfiscal || "");
+  const direccion = phpString(inst.direccion || "");
+  const codpostal = phpString(inst.codpostal || "");
+  const ciudad = phpString(inst.ciudad || "");
+  const provincia = phpString(inst.provincia || "");
+  const regimeniva = phpString(inst.regimeniva || "General");
+  const codimpuesto = phpString(inst.codimpuesto || "");
+  const defaultplan = phpBoolean(inst.defaultplan !== false);
+  const costpricepolicy = phpString(inst.costpricepolicy || "");
+  const ventasinstock = phpBoolean(inst.ventasinstock === true);
+  const updatesupplierprices = phpBoolean(inst.updatesupplierprices !== false);
+  const adminUser = phpString(config.admin?.username || "admin");
+  const adminEmail = phpString(config.admin?.email || "");
+
+  return `<?php
+error_reporting(E_ALL);
+ini_set('display_errors', '1');
+
+define('FS_FOLDER', '${FS_ROOT}');
+
+require_once FS_FOLDER . '/config.php';
+require_once FS_FOLDER . '/vendor/autoload.php';
+
+use FacturaScripts\\Core\\Tools;
+use FacturaScripts\\Core\\Model\\Almacen;
+use FacturaScripts\\Core\\Model\\AttachedFile;
+use FacturaScripts\\Core\\Model\\Diario;
+use FacturaScripts\\Core\\Model\\Empresa;
+use FacturaScripts\\Core\\Model\\EstadoDocumento;
+use FacturaScripts\\Core\\Model\\FormaPago;
+use FacturaScripts\\Core\\Model\\Impuesto;
+use FacturaScripts\\Core\\Model\\Provincia;
+use FacturaScripts\\Core\\Model\\Retencion;
+use FacturaScripts\\Core\\Model\\Serie;
+use FacturaScripts\\Core\\Model\\User;
+
+header('Content-Type: application/json');
+
+// Idempotency guard: if taxes already exist, the wizard has already run
+$impuesto = new Impuesto();
+if ($impuesto->count() > 0) {
+    echo json_encode(['ok' => true, 'skipped' => true]);
+    exit;
+}
+
+$codpais = '${codpais}';
+
+// Step 1: Load country defaults
+$defaultsFile = FS_FOLDER . '/Dinamic/Data/Codpais/' . $codpais . '/default.json';
+if (!file_exists($defaultsFile)) {
+    $defaultsFile = FS_FOLDER . '/Core/Data/Codpais/' . $codpais . '/default.json';
+}
+
+$countryDefaults = [];
+if (file_exists($defaultsFile)) {
+    $content = file_get_contents($defaultsFile);
+    if ($content !== false) {
+        $countryDefaults = json_decode($content, true) ?: [];
+    }
+}
+
+// Apply country defaults to settings
+$settingsKeys = ['coddivisa', 'codimpuesto', 'codpago', 'codserie', 'tipoidfiscal'];
+foreach ($settingsKeys as $key) {
+    if (isset($countryDefaults[$key]) && $countryDefaults[$key] !== '') {
+        Tools::settingsSet('default', $key, $countryDefaults[$key]);
+    }
+}
+
+// Initialize models (triggers install SQL for each)
+$models = [
+    new AttachedFile(),
+    new Diario(),
+    new EstadoDocumento(),
+    new FormaPago(),
+    new Impuesto(),
+    new Retencion(),
+    new Serie(),
+    new Provincia(),
+];
+foreach ($models as $model) {
+    // Calling count() or any query triggers the install() method
+    $model->count();
+}
+
+// Update empresa (company)
+$empresa = new Empresa();
+if ($empresa->loadFromCode(1)) {
+    $empresa->nombre = '${empresa}';
+    $empresa->nombrecorto = '${empresa}';
+    $empresa->cifnif = '${cifnif}';
+    $empresa->tipoidfiscal = '${tipoidfiscal}' ?: ($countryDefaults['tipoidfiscal'] ?? '');
+    $empresa->direccion = '${direccion}';
+    $empresa->codpostal = '${codpostal}';
+    $empresa->ciudad = '${ciudad}';
+    $empresa->provincia = '${provincia}';
+    $empresa->codpais = $codpais;
+    $empresa->email = '${adminEmail}';
+    $empresa->regimeniva = '${regimeniva}';
+    $empresa->save();
+}
+
+// Find or create warehouse and link to empresa
+$almacen = new Almacen();
+if (!$almacen->loadFromCode($almacen->primaryColumnValue())) {
+    // Get the first warehouse
+    $almacenes = $almacen->all([], [], 0, 1);
+    if (!empty($almacenes)) {
+        $almacen = $almacenes[0];
+    }
+}
+
+if ($almacen->exists()) {
+    $almacen->codpais = $codpais;
+    $almacen->ciudad = '${ciudad}';
+    $almacen->provincia = '${provincia}';
+    $almacen->direccion = '${direccion}';
+    $almacen->codpostal = '${codpostal}';
+    $almacen->idempresa = $empresa->idempresa ?? 1;
+    $almacen->save();
+
+    Tools::settingsSet('default', 'codalmacen', $almacen->codalmacen);
+    Tools::settingsSet('default', 'idempresa', $almacen->idempresa);
+}
+
+// Update admin user
+$user = new User();
+if ($user->loadFromCode('${adminUser}')) {
+    $email = '${adminEmail}';
+    if ($email !== '') {
+        $user->email = $email;
+    }
+    $user->homepage = 'Dashboard';
+    $user->save();
+}
+
+// Set additional settings
+$codimpuestoVal = '${codimpuesto}';
+if ($codimpuestoVal !== '') {
+    Tools::settingsSet('default', 'codimpuesto', $codimpuestoVal);
+}
+$costpricepolicyVal = '${costpricepolicy}';
+if ($costpricepolicyVal !== '') {
+    Tools::settingsSet('default', 'costpricepolicy', $costpricepolicyVal);
+}
+Tools::settingsSet('default', 'updatesupplierprices', ${updatesupplierprices});
+Tools::settingsSet('default', 'ventasinstock', ${ventasinstock});
+
+// Import default accounting plan if requested
+if (${defaultplan}) {
+    $planFile = FS_FOLDER . '/Dinamic/Data/Codpais/' . $codpais . '/plan.csv';
+    if (!file_exists($planFile)) {
+        $planFile = FS_FOLDER . '/Core/Data/Codpais/' . $codpais . '/plan.csv';
+    }
+    if (file_exists($planFile)) {
+        $importClass = 'FacturaScripts\\\\Core\\\\Lib\\\\Accounting\\\\AccountingPlanImport';
+        if (class_exists($importClass)) {
+            $importer = new $importClass();
+            $importer->importCSV($planFile, '0001');
+        }
+    }
+}
+
+// Set default employee role
+Tools::settingsSet('default', 'codrol', 'employee');
+
+// Save settings
+Tools::settingsSave();
+
+echo json_encode(['ok' => true, 'skipped' => false]);
+`;
+}
+
+function _buildProbeScript() {
   return `<?php
 $ok = true;
 $results = [];
@@ -414,7 +594,7 @@ function ensureDirSync(FS, path) {
   }
 }
 
-function removeNodeIfPresent(FS, path) {
+function _removeNodeIfPresent(FS, path) {
   const about = FS.analyzePath(path);
   if (!about.exists) {
     return;
@@ -426,7 +606,7 @@ function removeNodeIfPresent(FS, path) {
       if (entry === "." || entry === "..") {
         continue;
       }
-      removeNodeIfPresent(FS, `${path}/${entry}`.replace(/\/{2,}/gu, "/"));
+      _removeNodeIfPresent(FS, `${path}/${entry}`.replace(/\/{2,}/gu, "/"));
     }
     FS.rmdir(path);
     return;
@@ -442,7 +622,10 @@ function pathExists(FS, path) {
 function writeFileSafe(FS, path, content) {
   const parentDir = path.split("/").slice(0, -1).join("/") || "/";
   ensureDirSync(FS, parentDir);
-  FS.writeFile(path, typeof content === "string" ? encoder.encode(content) : content);
+  FS.writeFile(
+    path,
+    typeof content === "string" ? encoder.encode(content) : content,
+  );
 }
 
 function readPlaygroundState(FS) {
@@ -496,14 +679,63 @@ echo json_encode(['ok' => false, 'error' => 'user not found']);
 `;
 }
 
+async function initAllModels(php, FS) {
+  const scriptPath = `${FS_ROOT}/_playground_init_models.php`;
+  const script = `<?php
+error_reporting(E_ALL);
+ini_set('display_errors', '1');
+
+define('FS_FOLDER', '${FS_ROOT}');
+require_once FS_FOLDER . '/config.php';
+require_once FS_FOLDER . '/vendor/autoload.php';
+
+use FacturaScripts\\Core\\Tools;
+
+header('Content-Type: application/json');
+
+$modelsFolder = Tools::folder('Dinamic', 'Model');
+$loaded = 0;
+foreach (Tools::folderScan($modelsFolder) as $fileName) {
+    if ('.php' !== substr($fileName, -4)) {
+        continue;
+    }
+    $className = 'FacturaScripts\\\\Dinamic\\\\Model\\\\' . substr($fileName, 0, -4);
+    try {
+        new $className();
+        $loaded++;
+    } catch (\\Throwable $e) {
+        // skip
+    }
+}
+
+echo json_encode(['ok' => true, 'models' => $loaded]);
+`;
+  writeFileSafe(FS, scriptPath, script);
+  const response = await php.request(
+    new Request("http://localhost/_playground_init_models.php"),
+  );
+  await response.text();
+  try {
+    FS.unlink(scriptPath);
+  } catch {
+    /* ignore */
+  }
+}
+
 async function performAutologin(php, config, FS, publish) {
   publish("Signing in admin user automatically.", 0.85);
   const scriptPath = `${FS_ROOT}/_playground_autologin.php`;
   writeFileSafe(FS, scriptPath, buildAutologinScript(config.admin.username));
 
-  const response = await php.request(new Request("http://localhost/_playground_autologin.php"));
+  const response = await php.request(
+    new Request("http://localhost/_playground_autologin.php"),
+  );
   const text = await response.text();
-  try { FS.unlink(scriptPath); } catch { /* ignore */ }
+  try {
+    FS.unlink(scriptPath);
+  } catch {
+    /* ignore */
+  }
 
   try {
     const result = JSON.parse(text);
@@ -523,12 +755,22 @@ async function performAutologin(php, config, FS, publish) {
     }
 
     return { ok: true };
-  } catch (err) {
-    return { ok: false, warning: `Autologin script returned unexpected output: ${text.substring(0, 200)}` };
+  } catch (_err) {
+    return {
+      ok: false,
+      warning: `Autologin script returned unexpected output: ${text.substring(0, 200)}`,
+    };
   }
 }
 
-export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: rawBlueprint, clean, php, publish, runtimeId }) {
+export async function bootstrapFacturaScripts({
+  config: rawConfig,
+  blueprint: rawBlueprint,
+  clean,
+  php,
+  publish,
+  runtimeId,
+}) {
   const blueprint = rawBlueprint
     ? normalizeBlueprint(rawBlueprint, rawConfig)
     : normalizeBlueprint({}, rawConfig);
@@ -536,9 +778,13 @@ export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: ra
   const binary = await php.binary;
   const { FS } = binary;
 
-  publish("Loading FacturaScripts manifest.", 0.20);
+  publish("Loading FacturaScripts manifest.", 0.2);
   const manifest = await fetchManifest();
-  const manifestState = buildManifestState(manifest, runtimeId, rawConfig.bundleVersion);
+  const manifestState = buildManifestState(
+    manifest,
+    runtimeId,
+    rawConfig.bundleVersion,
+  );
 
   // Check existing state
   const existingState = readPlaygroundState(FS);
@@ -546,11 +792,19 @@ export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: ra
   const versionMatch = existingState?.manifestVersion === manifestVersion;
   const skipInstall = versionMatch && !clean;
 
-  if (!skipInstall && (clean || (existingState && !versionMatch && rawConfig.resetOnVersionMismatch))) {
+  if (
+    !skipInstall &&
+    (clean ||
+      (existingState && !versionMatch && rawConfig.resetOnVersionMismatch))
+  ) {
     publish("Cleaning previous state.", 0.22);
     for (const path of [PLAYGROUND_DB_PATH, PLAYGROUND_CONFIG_PATH]) {
       if (pathExists(FS, path)) {
-        try { FS.unlink(path); } catch { /* ignore */ }
+        try {
+          FS.unlink(path);
+        } catch {
+          /* ignore */
+        }
       }
     }
   }
@@ -563,7 +817,7 @@ export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: ra
   // Directories are created directly inside the docroot. The VFS is readonly on
   // disk but Emscripten's MEMFS overlay allows in-memory writes on top of it.
   // Symlinks don't work reliably in MEMFS, so we create real directories.
-  publish("Creating mutable directory layout.", 0.40);
+  publish("Creating mutable directory layout.", 0.4);
   const mutableDirs = [
     "/persist/mutable/db",
     "/persist/mutable/config",
@@ -615,25 +869,62 @@ export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: ra
   const installScriptPath = `${FS_ROOT}/_playground_install.php`;
   writeFileSafe(FS, installScriptPath, buildInstallScript());
 
-  const installResponse = await php.request(new Request("http://localhost/_playground_install.php"));
+  const installResponse = await php.request(
+    new Request("http://localhost/_playground_install.php"),
+  );
   const installText = await installResponse.text();
-  try { FS.unlink(installScriptPath); } catch { /* ignore */ }
+  try {
+    FS.unlink(installScriptPath);
+  } catch {
+    /* ignore */
+  }
   if (!installText.includes("INSTALL_OK")) {
     throw new Error(`FacturaScripts deploy failed:\n${installText}`);
   }
 
   if (!skipInstall) {
     // First request to / to trigger initial setup (creates admin user etc.)
-    publish("Triggering first-run setup.", 0.70);
-    const firstRunResponse = await php.request(new Request("http://localhost/"));
+    publish("Triggering first-run setup.", 0.65);
+    const firstRunResponse = await php.request(
+      new Request("http://localhost/"),
+    );
     const firstRunStatus = firstRunResponse.status;
     if (firstRunStatus >= 500) {
       const body = await firstRunResponse.text();
       throw new Error(`First-run request returned ${firstRunStatus}:\n${body}`);
     }
 
+    // Run wizard-equivalent initialization (taxes, payment methods, company data, etc.)
+    publish("Initializing company, taxes, and base data.", 0.72);
+    const wizardScriptPath = `${FS_ROOT}/_playground_wizard.php`;
+    writeFileSafe(FS, wizardScriptPath, buildWizardScript(config));
+
+    const wizardResponse = await php.request(
+      new Request("http://localhost/_playground_wizard.php"),
+    );
+    const wizardText = await wizardResponse.text();
+    try {
+      FS.unlink(wizardScriptPath);
+    } catch {
+      /* ignore */
+    }
+
+    try {
+      const wizardResult = JSON.parse(wizardText);
+      if (!wizardResult.ok) {
+        throw new Error(`Wizard initialization failed: ${wizardText}`);
+      }
+    } catch (err) {
+      if (err instanceof SyntaxError) {
+        throw new Error(
+          `Wizard script returned unexpected output:\n${wizardText.substring(0, 500)}`,
+        );
+      }
+      throw err;
+    }
+
     // Save playground state
-    publish("Saving playground state.", 0.90);
+    publish("Saving playground state.", 0.85);
     writePlaygroundState(FS, {
       manifestVersion,
       runtimeId,
@@ -643,7 +934,10 @@ export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: ra
       },
     });
   } else {
-    publish("Persistent database matches current version. Skipping table creation.", 0.70);
+    publish(
+      "Persistent database matches current version. Skipping table creation.",
+      0.7,
+    );
   }
 
   await materializeBlueprintAddons({
@@ -655,12 +949,19 @@ export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: ra
     manifestVersion,
   });
 
-  let readyPath = blueprint.landingPage || config.landingPath || "/";
+  // After all plugins are installed and enabled (which triggers deploy and clears
+  // the checked_tables cache), we must init ALL Dinamic models one final time to
+  // ensure every table exists in SQLite. Without this, the first page load may
+  // hit models whose tables haven't been verified yet, showing "table not found".
+  publish("Verifying all database tables.", 0.88);
+  await initAllModels(php, FS);
+
+  const readyPath = blueprint.landingPage || config.landingPath || "/";
 
   if (config.autologin) {
     const autologin = await performAutologin(php, config, FS, publish);
     if (autologin.ok) {
-      publish("Autologin successful.", 0.90);
+      publish("Autologin successful.", 0.9);
     } else if (autologin.warning) {
       publish(`[warning] ${autologin.warning}`, 0.92);
     }

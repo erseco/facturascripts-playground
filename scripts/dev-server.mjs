@@ -11,7 +11,9 @@ const port = Number(process.env.PORT || process.argv[2] || 8080);
 const configPath = resolve(repoDir, "playground.config.json");
 const playgroundConfig = JSON.parse(await readFile(configPath, "utf8"));
 const outboundHttp = playgroundConfig.outboundHttp || {};
-const proxyPath = String(outboundHttp.proxyPath || "/__addon_proxy__").trim() || "/__addon_proxy__";
+const proxyPath =
+  String(outboundHttp.proxyPath || "/__addon_proxy__").trim() ||
+  "/__addon_proxy__";
 
 const MIME_TYPES = {
   ".bin": "application/octet-stream",
@@ -46,7 +48,8 @@ function jsonResponse(res, status, data) {
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET, HEAD, OPTIONS",
     "access-control-allow-headers": "Content-Type, Accept",
-    "access-control-expose-headers": "Content-Disposition, Content-Type, Content-Length",
+    "access-control-expose-headers":
+      "Content-Disposition, Content-Type, Content-Length",
     "cache-control": "no-store",
     "content-type": "application/json; charset=utf-8",
   });
@@ -57,35 +60,45 @@ function buildCorsHeaders() {
     "access-control-allow-origin": "*",
     "access-control-allow-methods": "GET, HEAD, OPTIONS",
     "access-control-allow-headers": "Content-Type, Accept",
-    "access-control-expose-headers": "Content-Disposition, Content-Type, Content-Length",
+    "access-control-expose-headers":
+      "Content-Disposition, Content-Type, Content-Length",
   };
 }
 
 function normalizeHost(value) {
-  return String(value || "").trim().toLowerCase();
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
 
 function isAllowedHost(hostname, allowedHosts) {
   const normalizedHost = normalizeHost(hostname);
   return allowedHosts.some((entry) => {
     const normalizedEntry = normalizeHost(entry);
-    return normalizedEntry
-      && (normalizedHost === normalizedEntry || normalizedHost.endsWith(`.${normalizedEntry}`));
+    return (
+      normalizedEntry &&
+      (normalizedHost === normalizedEntry ||
+        normalizedHost.endsWith(`.${normalizedEntry}`))
+    );
   });
 }
 
 function isFacturaScriptsPluginPage(url) {
-  return normalizeHost(url.hostname) === "facturascripts.com"
-    && /^\/plugins\/[^/]+\/?$/u.test(url.pathname);
+  return (
+    normalizeHost(url.hostname) === "facturascripts.com" &&
+    /^\/plugins\/[^/]+\/?$/u.test(url.pathname)
+  );
 }
 
 function looksLikePluginDownload(url) {
   const pathname = url.pathname.toLowerCase();
-  return pathname.endsWith(".zip")
-    || pathname.includes("/zip/")
-    || pathname.includes("archive/refs/heads/")
-    || pathname.includes("archive/refs/tags/")
-    || /\/downloadbuild\/\d+\/(stable|beta)$/u.test(pathname);
+  return (
+    pathname.endsWith(".zip") ||
+    pathname.includes("/zip/") ||
+    pathname.includes("archive/refs/heads/") ||
+    pathname.includes("archive/refs/tags/") ||
+    /\/downloadbuild\/\d+\/(stable|beta)$/u.test(pathname)
+  );
 }
 
 function isSupportedProxyTarget(url) {
@@ -121,11 +134,15 @@ async function proxyAddon(req, res, url) {
   }
 
   if (!["http:", "https:"].includes(parsedTargetUrl.protocol)) {
-    jsonResponse(res, 400, { error: "Invalid protocol. Only http and https are allowed." });
+    jsonResponse(res, 400, {
+      error: "Invalid protocol. Only http and https are allowed.",
+    });
     return;
   }
 
-  if (!isAllowedHost(parsedTargetUrl.hostname, outboundHttp.allowedHosts || [])) {
+  if (
+    !isAllowedHost(parsedTargetUrl.hostname, outboundHttp.allowedHosts || [])
+  ) {
     jsonResponse(res, 403, {
       error: `Outbound HTTP host "${parsedTargetUrl.hostname}" is not allowed.`,
     });
@@ -133,7 +150,9 @@ async function proxyAddon(req, res, url) {
   }
 
   if (!isSupportedProxyTarget(parsedTargetUrl)) {
-    jsonResponse(res, 400, { error: "The provided URL is not a supported plugin page or ZIP download." });
+    jsonResponse(res, 400, {
+      error: "The provided URL is not a supported plugin page or ZIP download.",
+    });
     return;
   }
 
@@ -159,14 +178,20 @@ async function proxyAddon(req, res, url) {
     const headers = {
       ...buildCorsHeaders(),
       "cache-control": "no-store",
-      "content-type": upstreamResponse.headers.get("content-type")
-        || (looksLikePluginDownload(parsedTargetUrl) ? "application/zip" : "text/html; charset=utf-8"),
+      "content-type":
+        upstreamResponse.headers.get("content-type") ||
+        (looksLikePluginDownload(parsedTargetUrl)
+          ? "application/zip"
+          : "text/html; charset=utf-8"),
     };
-    const contentDisposition = upstreamResponse.headers.get("content-disposition");
+    const contentDisposition = upstreamResponse.headers.get(
+      "content-disposition",
+    );
     if (contentDisposition) {
       headers["content-disposition"] = contentDisposition;
     } else if (looksLikePluginDownload(parsedTargetUrl)) {
-      headers["content-disposition"] = `attachment; filename="${buildDownloadFilename(parsedTargetUrl)}"`;
+      headers["content-disposition"] =
+        `attachment; filename="${buildDownloadFilename(parsedTargetUrl)}"`;
     }
     const contentLength = upstreamResponse.headers.get("content-length");
     if (contentLength) {
@@ -210,10 +235,12 @@ function safeLocalPath(urlPath) {
   return absolute;
 }
 
-async function serveStatic(req, res, url) {
+async function serveStatic(_req, res, url) {
   const targetPath = safeLocalPath(url.pathname);
   if (!targetPath || !existsSync(targetPath)) {
-    send(res, 404, "Not found", { "content-type": "text/plain; charset=utf-8" });
+    send(res, 404, "Not found", {
+      "content-type": "text/plain; charset=utf-8",
+    });
     return;
   }
 
@@ -227,11 +254,15 @@ async function serveStatic(req, res, url) {
   try {
     fileStats = await stat(resolvedPath);
   } catch {
-    send(res, 404, "Not found", { "content-type": "text/plain; charset=utf-8" });
+    send(res, 404, "Not found", {
+      "content-type": "text/plain; charset=utf-8",
+    });
     return;
   }
 
-  const mime = MIME_TYPES[extname(resolvedPath).toLowerCase()] || "application/octet-stream";
+  const mime =
+    MIME_TYPES[extname(resolvedPath).toLowerCase()] ||
+    "application/octet-stream";
   res.writeHead(200, {
     "cache-control": "no-store",
     "content-length": fileStats.size,
@@ -241,7 +272,10 @@ async function serveStatic(req, res, url) {
 }
 
 const server = createServer(async (req, res) => {
-  const url = new URL(req.url || "/", `http://${req.headers.host || `127.0.0.1:${port}`}`);
+  const url = new URL(
+    req.url || "/",
+    `http://${req.headers.host || `127.0.0.1:${port}`}`,
+  );
 
   if (req.method === "OPTIONS" && url.pathname === proxyPath) {
     send(res, 204, "", buildCorsHeaders());
@@ -249,7 +283,9 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.method !== "GET" && req.method !== "HEAD") {
-    send(res, 405, "Method not allowed", { "content-type": "text/plain; charset=utf-8" });
+    send(res, 405, "Method not allowed", {
+      "content-type": "text/plain; charset=utf-8",
+    });
     return;
   }
 
@@ -262,5 +298,7 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(port, "127.0.0.1", () => {
-  log(`FacturaScripts playground dev server listening on http://127.0.0.1:${port}`);
+  log(
+    `FacturaScripts playground dev server listening on http://127.0.0.1:${port}`,
+  );
 });

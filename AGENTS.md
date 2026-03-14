@@ -46,6 +46,9 @@ make deps
 make prepare
 make bundle
 make serve
+make lint
+make format
+make test
 make clean
 make reset
 ```
@@ -162,7 +165,17 @@ Plugin download/materialization is not implemented yet. `src/runtime/addons.js` 
 - Prefer `URL` helpers for browser paths and POSIX-style paths for runtime FS paths.
 - Keep comments short and explain why, not what.
 
-## Testing and verification
+## Linting, formatting, and testing
+
+Before committing or submitting a PR, always run:
+
+```bash
+make lint      # Run Biome linter — must pass with zero errors
+make format    # Auto-fix lint and formatting issues
+make test      # Run unit tests — all must pass
+```
+
+Biome is configured in `biome.json` and checks `src/`, `tests/`, and `scripts/`. Fix any lint errors before committing. Use `make format` to auto-fix formatting and safe lint issues.
 
 Typical syntax checks:
 

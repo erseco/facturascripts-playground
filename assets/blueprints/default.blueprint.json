@@ -23,5 +23,21 @@
     "customers": [],
     "suppliers": [],
     "products": []
+  },
+  "install": {
+    "codpais": "ESP",
+    "empresa": "Empresa Playground",
+    "cifnif": "00000014Z",
+    "tipoidfiscal": "",
+    "direccion": "",
+    "codpostal": "",
+    "ciudad": "",
+    "provincia": "",
+    "regimeniva": "General",
+    "codimpuesto": "",
+    "defaultplan": true,
+    "costpricepolicy": "",
+    "ventasinstock": false,
+    "updatesupplierprices": true
   }
 }

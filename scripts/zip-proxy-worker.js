@@ -49,8 +49,8 @@ export default {
     }
 
     if (
-      parsedTargetUrl.protocol !== "https:"
-      && parsedTargetUrl.protocol !== "http:"
+      parsedTargetUrl.protocol !== "https:" &&
+      parsedTargetUrl.protocol !== "http:"
     ) {
       return jsonResponse(
         {
@@ -60,22 +60,30 @@ export default {
       );
     }
 
-    if (!looksLikeZipUrl(parsedTargetUrl) && !isFacturaScriptsPluginPage(parsedTargetUrl)) {
+    if (
+      !looksLikeZipUrl(parsedTargetUrl) &&
+      !isFacturaScriptsPluginPage(parsedTargetUrl)
+    ) {
       return jsonResponse(
         {
-          error: "The provided URL is not a supported plugin page or ZIP download.",
+          error:
+            "The provided URL is not a supported plugin page or ZIP download.",
         },
         400,
       );
     }
 
     try {
+      const acceptHeader = isFacturaScriptsPluginPage(parsedTargetUrl)
+        ? "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"
+        : "application/zip, application/octet-stream;q=0.9, */*;q=0.8";
+
       const upstreamResponse = await fetch(parsedTargetUrl.toString(), {
         method: "GET",
         redirect: "follow",
         headers: {
           "User-Agent": "zip-proxy-worker",
-          Accept: "application/zip, application/octet-stream;q=0.9, */*;q=0.8",
+          Accept: acceptHeader,
         },
       });
 
@@ -96,10 +104,16 @@ export default {
 
       headers.set(
         "Content-Type",
-        headers.get("Content-Type") || (looksLikeZipUrl(parsedTargetUrl) ? "application/zip" : "text/html; charset=utf-8"),
+        headers.get("Content-Type") ||
+          (looksLikeZipUrl(parsedTargetUrl)
+            ? "application/zip"
+            : "text/html; charset=utf-8"),
       );
 
-      if (!headers.get("Content-Disposition") && looksLikeZipUrl(parsedTargetUrl)) {
+      if (
+        !headers.get("Content-Disposition") &&
+        looksLikeZipUrl(parsedTargetUrl)
+      ) {
         headers.set(
           "Content-Disposition",
           `attachment; filename="${buildZipFilename(parsedTargetUrl)}"`,
@@ -179,8 +193,10 @@ function looksLikeZipUrl(url) {
 }
 
 function isFacturaScriptsPluginPage(url) {
-  return url.hostname.toLowerCase() === "facturascripts.com"
-    && /^\/plugins\/[^/]+\/?$/u.test(url.pathname);
+  return (
+    url.hostname.toLowerCase() === "facturascripts.com" &&
+    /^\/plugins\/[^/]+\/?$/u.test(url.pathname)
+  );
 }
 
 function buildZipFilename(url) {

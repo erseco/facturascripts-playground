@@ -24,7 +24,10 @@ function ensureDirSync(FS, path) {
 function writeFileSafe(FS, path, content) {
   const parentDir = path.split("/").slice(0, -1).join("/") || "/";
   ensureDirSync(FS, parentDir);
-  FS.writeFile(path, typeof content === "string" ? encoder.encode(content) : content);
+  FS.writeFile(
+    path,
+    typeof content === "string" ? encoder.encode(content) : content,
+  );
 }
 
 function readJsonFile(FS, path) {
@@ -101,7 +104,9 @@ async function fetchPluginArchive(sourceUrl, label) {
     } catch {
       // Keep the plain status when the body cannot be read.
     }
-    throw new Error(`Unable to download plugin ${label} from ${resolvedUrl}: ${detail}`);
+    throw new Error(
+      `Unable to download plugin ${label} from ${resolvedUrl}: ${detail}`,
+    );
   }
   const bytes = new Uint8Array(await response.arrayBuffer());
   if (bytes.byteLength === 0) {
@@ -113,8 +118,10 @@ async function fetchPluginArchive(sourceUrl, label) {
 function isFacturaScriptsPluginPageUrl(value) {
   try {
     const url = new URL(String(value || ""));
-    return url.hostname === "facturascripts.com"
-      && /^\/plugins\/[^/]+\/?$/iu.test(url.pathname);
+    return (
+      url.hostname === "facturascripts.com" &&
+      /^\/plugins\/[^/]+\/?$/iu.test(url.pathname)
+    );
   } catch {
     return false;
   }
@@ -170,7 +177,9 @@ function buildGitHubArchiveUrl(sourceUrl) {
 }
 
 function extractFacturaScriptsDownloadUrl(html, sourceUrl) {
-  const match = String(html || "").match(/href=["']([^"']*\/DownloadBuild\/\d+\/(?:stable|beta)[^"']*)["']/iu);
+  const match = String(html || "").match(
+    /href=["']([^"']*\/DownloadBuild\/\d+\/(?:stable|beta)[^"']*)["']/iu,
+  );
   if (!match?.[1]) {
     throw new Error(`Unable to find a DownloadBuild link in ${sourceUrl}.`);
   }
@@ -194,7 +203,9 @@ async function resolvePluginDownloadUrl(sourceUrl, label) {
     },
   });
   if (!response.ok) {
-    throw new Error(`Unable to resolve plugin page ${sourceUrl} for ${label}: ${response.status}`);
+    throw new Error(
+      `Unable to resolve plugin page ${sourceUrl} for ${label}: ${response.status}`,
+    );
   }
 
   const html = await response.text();
@@ -213,7 +224,12 @@ function buildPluginSourceList(plugin) {
   return [];
 }
 
-function buildBlueprintMaterializationState({ manifestVersion, blueprintHash, pluginResults, seedSummary }) {
+function buildBlueprintMaterializationState({
+  manifestVersion,
+  blueprintHash,
+  pluginResults,
+  seedSummary,
+}) {
   return {
     manifestVersion,
     blueprintHash,
@@ -239,7 +255,7 @@ function buildSeedPayload(blueprint) {
   };
 }
 
-function buildPluginScript({ fsRoot, payloadPath, operation }) {
+function buildPluginScript({ fsRoot, payloadPath, operation: _operation }) {
   return `<?php
 error_reporting(E_ALL);
 ini_set('display_errors', '1');
@@ -419,10 +435,16 @@ echo json_encode($result);
 async function runPhpScript({ FS, php, scriptPath, scriptContents }) {
   writeFileSafe(FS, scriptPath, scriptContents);
   try {
-    const response = await php.request(new Request(`http://localhost${scriptPath.replace(/^\/www\/facturascripts/iu, "")}`));
+    const response = await php.request(
+      new Request(
+        `http://localhost${scriptPath.replace(/^\/www\/facturascripts/iu, "")}`,
+      ),
+    );
     const text = await response.text();
     if (!response.ok) {
-      throw new Error(`PHP script ${scriptPath} failed with status ${response.status}: ${text}`);
+      throw new Error(
+        `PHP script ${scriptPath} failed with status ${response.status}: ${text}`,
+      );
     }
     return text;
   } finally {
@@ -434,7 +456,13 @@ async function runPhpScript({ FS, php, scriptPath, scriptContents }) {
   }
 }
 
-async function installAndActivatePlugins({ FS, php, fsRoot, publish, blueprint }) {
+async function installAndActivatePlugins({
+  FS,
+  php,
+  fsRoot,
+  publish,
+  blueprint,
+}) {
   const pluginResults = [];
   if (!blueprint.plugins.length) {
     return pluginResults;
@@ -447,18 +475,27 @@ async function installAndActivatePlugins({ FS, php, fsRoot, publish, blueprint }
     const targetDir = `${fsRoot}/Plugins/${plugin.name}`;
     const sources = buildPluginSourceList(plugin);
     let zipPath = null;
-    const requiresDownload = plugin.source?.type === "url"
-      && (!plugin.name || !pathExists(FS, targetDir));
+    const requiresDownload =
+      plugin.source?.type === "url" &&
+      (!plugin.name || !pathExists(FS, targetDir));
 
     if (requiresDownload && sources.length > 0) {
       const sourceUrl = sources[0];
       publish(`Downloading plugin ${plugin.name || sourceUrl}.`, 0.78);
-      const bytes = await fetchPluginArchive(sourceUrl, plugin.name || sourceUrl);
+      const bytes = await fetchPluginArchive(
+        sourceUrl,
+        plugin.name || sourceUrl,
+      );
       const zipFileName = `${sanitizeSegment(plugin.name || sourceUrl, "plugin")}.zip`;
       zipPath = `${PLUGIN_DOWNLOAD_DIR}/${zipFileName}`;
       writeFileSafe(FS, zipPath, bytes);
-    } else if (plugin.source?.type === "bundled" && !pathExists(FS, targetDir)) {
-      throw new Error(`Blueprint plugin "${plugin.name}" is not available in the bundled runtime and no ZIP URL was provided.`);
+    } else if (
+      plugin.source?.type === "bundled" &&
+      !pathExists(FS, targetDir)
+    ) {
+      throw new Error(
+        `Blueprint plugin "${plugin.name}" is not available in the bundled runtime and no ZIP URL was provided.`,
+      );
     }
 
     pluginResults.push({
@@ -473,7 +510,11 @@ async function installAndActivatePlugins({ FS, php, fsRoot, publish, blueprint }
     return pluginResults;
   }
 
-  writeFileSafe(FS, BLUEPRINT_PAYLOAD_PATH, JSON.stringify({ plugins: buildPluginOps(pluginResults) }, null, 2));
+  writeFileSafe(
+    FS,
+    BLUEPRINT_PAYLOAD_PATH,
+    JSON.stringify({ plugins: buildPluginOps(pluginResults) }, null, 2),
+  );
   const text = await runPhpScript({
     FS,
     php,
@@ -489,22 +530,32 @@ async function installAndActivatePlugins({ FS, php, fsRoot, publish, blueprint }
     throw new Error(`Plugin blueprint execution failed: ${text}`);
   }
 
-  return result.plugins || pluginResults.map((entry) => ({
-    name: entry.name,
-    installed: Boolean(entry.zipPath),
-    enabled: entry.shouldEnable,
-  }));
+  return (
+    result.plugins ||
+    pluginResults.map((entry) => ({
+      name: entry.name,
+      installed: Boolean(entry.zipPath),
+      enabled: entry.shouldEnable,
+    }))
+  );
 }
 
 async function applySeedData({ FS, php, fsRoot, publish, blueprint }) {
   const seedPayload = buildSeedPayload(blueprint);
-  const totalEntries = seedPayload.customers.length + seedPayload.suppliers.length + seedPayload.products.length;
+  const totalEntries =
+    seedPayload.customers.length +
+    seedPayload.suppliers.length +
+    seedPayload.products.length;
   if (totalEntries === 0) {
     return null;
   }
 
   publish("Seeding demo customers, suppliers, and products.", 0.84);
-  writeFileSafe(FS, BLUEPRINT_PAYLOAD_PATH, JSON.stringify(seedPayload, null, 2));
+  writeFileSafe(
+    FS,
+    BLUEPRINT_PAYLOAD_PATH,
+    JSON.stringify(seedPayload, null, 2),
+  );
 
   const text = await runPhpScript({
     FS,
@@ -540,8 +591,14 @@ export async function materializeBlueprintAddons({
   const blueprintHash = await sha256Text(blueprintFingerprint);
   const existingState = readJsonFile(FS, BLUEPRINT_STATE_PATH);
 
-  if (existingState?.manifestVersion === manifestVersion && existingState?.blueprintHash === blueprintHash) {
-    publish("Blueprint plugins and demo seed already match persisted state.", 0.74);
+  if (
+    existingState?.manifestVersion === manifestVersion &&
+    existingState?.blueprintHash === blueprintHash
+  ) {
+    publish(
+      "Blueprint plugins and demo seed already match persisted state.",
+      0.74,
+    );
     return existingState;
   }
 

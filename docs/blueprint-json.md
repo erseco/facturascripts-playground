@@ -27,6 +27,7 @@ Actualmente el runtime usa el blueprint para:
 - sobreescribir el usuario y password del login inicial
 - instalar y activar plugins declarados en `plugins`
 - sembrar clientes, proveedores y productos declarados en `seed`
+- inicializar datos base (impuestos, formas de pago, empresa, almacen, plan contable) segun `install`
 
 ## Estructura soportada
 
@@ -40,6 +41,7 @@ Actualmente el runtime usa el blueprint para:
 | `login` | Credenciales efectivas | `username`, `password` |
 | `plugins` | Declaracion de plugins | Cada entrada puede ser nombre de plugin o URL a ZIP |
 | `seed` | Datos demo idempotentes | MVP: `customers`, `suppliers`, `products` |
+| `install` | Datos base de inicializacion | Empresa, impuestos, plan contable, etc. |
 
 ## Ejemplo valido
 
@@ -286,6 +288,59 @@ Campos recomendados:
 - el seed hace upsert por esas claves naturales para no duplicar datos en recargas.
 - las URLs de plugins remotos estan sujetas a la politica `outboundHttp` del playground.
 - en desarrollo local las descargas pasan por `/__addon_proxy__`; en despliegue estatico usan el proxy configurado.
+
+## Seccion `install`
+
+La seccion `install` permite configurar los datos base que normalmente crea el Wizard de FacturaScripts: impuestos, formas de pago, estados de documento, series, diarios, retenciones, provincias, datos de empresa, almacen y plan contable.
+
+El playground ejecuta automaticamente esta inicializacion durante el arranque, despues del primer deploy. Es idempotente: si los impuestos ya existen, no se vuelve a ejecutar.
+
+### Propiedades
+
+| Propiedad | Tipo | Default | Descripcion |
+| --- | --- | --- | --- |
+| `codpais` | string | `"ESP"` | Codigo de pais (carga defaults de `Data/Codpais/{codpais}/`) |
+| `empresa` | string | `"Empresa Playground"` | Nombre de la empresa |
+| `cifnif` | string | `"00000014Z"` | CIF/NIF de la empresa |
+| `tipoidfiscal` | string | `""` | Tipo de identificacion fiscal |
+| `direccion` | string | `""` | Direccion de la empresa |
+| `codpostal` | string | `""` | Codigo postal |
+| `ciudad` | string | `""` | Ciudad |
+| `provincia` | string | `""` | Provincia |
+| `regimeniva` | string | `"General"` | Regimen de IVA de la empresa |
+| `codimpuesto` | string | `""` | Impuesto por defecto (si vacio, usa el default del pais) |
+| `defaultplan` | boolean | `true` | Importar plan contable por defecto del pais |
+| `costpricepolicy` | string | `""` | Politica de precio de coste |
+| `ventasinstock` | boolean | `false` | Permitir ventas sin stock |
+| `updatesupplierprices` | boolean | `true` | Actualizar precios de proveedor automaticamente |
+
+### Ejemplo
+
+```json
+{
+  "install": {
+    "codpais": "ESP",
+    "empresa": "Mi Empresa Demo",
+    "cifnif": "B12345678",
+    "ciudad": "Madrid",
+    "provincia": "Madrid",
+    "regimeniva": "General",
+    "defaultplan": true
+  }
+}
+```
+
+### Que inicializa
+
+1. Carga defaults del pais (`coddivisa`, `codimpuesto`, `codpago`, `codserie`, `tipoidfiscal`)
+2. Crea registros base: impuestos, formas de pago, estados de documento, series, diarios, retenciones, provincias
+3. Actualiza datos de empresa (nombre, CIF, direccion, pais)
+4. Crea/actualiza almacen y lo vincula a la empresa
+5. Configura regimen de IVA
+6. Importa plan contable (si `defaultplan: true`)
+7. Carga todos los modelos dinamicos para crear tablas restantes
+8. Ejecuta deploy final de plugins
+9. Configura homepage del usuario a Dashboard
 
 ## Limitaciones del MVP
 
