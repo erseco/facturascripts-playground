@@ -46,6 +46,9 @@ make deps
 make prepare
 make bundle
 make serve
+make lint
+make format
+make test
 make clean
 make reset
 ```
