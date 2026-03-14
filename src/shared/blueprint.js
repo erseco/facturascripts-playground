@@ -38,7 +38,8 @@ function decodeBase64Text(value) {
     .replace(/_/gu, "/")
     .replace(/\s+/gu, "");
   const padding = normalized.length % 4;
-  const padded = padding === 0 ? normalized : `${normalized}${"=".repeat(4 - padding)}`;
+  const padded =
+    padding === 0 ? normalized : `${normalized}${"=".repeat(4 - padding)}`;
 
   let binary;
   try {
@@ -87,11 +88,9 @@ function normalizePluginSource(input) {
     return { type: "bundled" };
   }
 
-  const type = String(
-    input.type
-      || (input.url ? "url" : "")
-      || "bundled",
-  ).trim().toLowerCase();
+  const type = String(input.type || (input.url ? "url" : "") || "bundled")
+    .trim()
+    .toLowerCase();
 
   if (type === "bundled") {
     return { type };
@@ -100,7 +99,9 @@ function normalizePluginSource(input) {
   if (type === "url") {
     const url = absolutizeUrl(input.url || "");
     if (!url) {
-      throw new Error("Blueprint plugin source.type='url' requires source.url.");
+      throw new Error(
+        "Blueprint plugin source.type='url' requires source.url.",
+      );
     }
     return { type, url };
   }
@@ -114,68 +115,88 @@ function normalizePluginCollection(input) {
   }
 
   const seen = new Set();
-  return input.map((entry) => {
-    if (typeof entry === "string") {
-      const text = entry.trim();
-      if (!text) {
+  return input
+    .map((entry) => {
+      if (typeof entry === "string") {
+        const text = entry.trim();
+        if (!text) {
+          return null;
+        }
+
+        const isUrl = isHttpUrl(text);
+        const normalized = isUrl
+          ? {
+              name: "",
+              source: {
+                type: "url",
+                url: absolutizeUrl(text),
+              },
+              state: "activate",
+            }
+          : {
+              name: text,
+              source: { type: "bundled" },
+              state: "activate",
+            };
+
+        if (
+          !isUrl &&
+          (/[\\/]/u.test(normalized.name) ||
+            normalized.name === "." ||
+            normalized.name === "..")
+        ) {
+          throw new Error(
+            `Blueprint plugin name "${normalized.name}" must be a single path segment.`,
+          );
+        }
+
+        const dedupeKey = isUrl
+          ? `url:${normalized.source.url.toLowerCase()}`
+          : `name:${normalized.name.toLowerCase()}`;
+        if (seen.has(dedupeKey)) {
+          throw new Error(
+            `Blueprint plugins cannot include duplicate entry "${normalized.name}".`,
+          );
+        }
+        seen.add(dedupeKey);
+        return normalized;
+      }
+
+      const source = normalizePluginSource(entry?.source);
+      const normalized = {
+        name: String(entry?.name || "").trim(),
+        source,
+        state: entry?.state === "install" ? "install" : "activate",
+      };
+
+      if (!normalized.name && source.type !== "url") {
         return null;
       }
 
-      const isUrl = isHttpUrl(text);
-      const normalized = isUrl
-        ? {
-          name: "",
-          source: {
-            type: "url",
-            url: absolutizeUrl(text),
-          },
-          state: "activate",
-        }
-        : {
-          name: text,
-          source: { type: "bundled" },
-          state: "activate",
-        };
-
-      if (!isUrl && (/[\\/]/u.test(normalized.name) || normalized.name === "." || normalized.name === "..")) {
-        throw new Error(`Blueprint plugin name "${normalized.name}" must be a single path segment.`);
+      if (
+        normalized.name &&
+        (/[\\/]/u.test(normalized.name) ||
+          normalized.name === "." ||
+          normalized.name === "..")
+      ) {
+        throw new Error(
+          `Blueprint plugin name "${normalized.name}" must be a single path segment.`,
+        );
       }
 
-      const dedupeKey = isUrl
-        ? `url:${normalized.source.url.toLowerCase()}`
-        : `name:${normalized.name.toLowerCase()}`;
+      const dedupeKey = normalized.name
+        ? `name:${normalized.name.toLowerCase()}`
+        : `url:${normalized.source.url.toLowerCase()}`;
       if (seen.has(dedupeKey)) {
-        throw new Error(`Blueprint plugins cannot include duplicate entry "${normalized.name}".`);
+        throw new Error(
+          `Blueprint plugins cannot include duplicate entry "${normalized.name || normalized.source.url}".`,
+        );
       }
       seen.add(dedupeKey);
+
       return normalized;
-    }
-
-    const source = normalizePluginSource(entry?.source);
-    const normalized = {
-      name: String(entry?.name || "").trim(),
-      source,
-      state: entry?.state === "install" ? "install" : "activate",
-    };
-
-    if (!normalized.name && source.type !== "url") {
-      return null;
-    }
-
-    if (normalized.name && (/[\\/]/u.test(normalized.name) || normalized.name === "." || normalized.name === "..")) {
-      throw new Error(`Blueprint plugin name "${normalized.name}" must be a single path segment.`);
-    }
-
-    const dedupeKey = normalized.name
-      ? `name:${normalized.name.toLowerCase()}`
-      : `url:${normalized.source.url.toLowerCase()}`;
-    if (seen.has(dedupeKey)) {
-      throw new Error(`Blueprint plugins cannot include duplicate entry "${normalized.name || normalized.source.url}".`);
-    }
-    seen.add(dedupeKey);
-
-    return normalized;
-  }).filter(Boolean);
+    })
+    .filter(Boolean);
 }
 
 function normalizeSeedCollection(input, primaryKey) {
@@ -198,7 +219,9 @@ function normalizeSeedCollection(input, primaryKey) {
     normalized[primaryKey] = key;
     const dedupeKey = key.toLowerCase();
     if (seen.has(dedupeKey)) {
-      throw new Error(`Blueprint seed cannot include duplicate ${primaryKey} "${key}".`);
+      throw new Error(
+        `Blueprint seed cannot include duplicate ${primaryKey} "${key}".`,
+      );
     }
     seen.add(dedupeKey);
     return normalized;
@@ -230,9 +253,10 @@ export function normalizeInstall(input) {
   const result = { ...defaults };
   for (const key of Object.keys(input)) {
     if (key in defaults) {
-      result[key] = typeof defaults[key] === "boolean"
-        ? input[key] === true
-        : String(input[key] ?? defaults[key]);
+      result[key] =
+        typeof defaults[key] === "boolean"
+          ? input[key] === true
+          : String(input[key] ?? defaults[key]);
     }
   }
   return result;
@@ -255,7 +279,10 @@ function normalizeSeed(input) {
 }
 
 export function getBlueprintSchemaUrl() {
-  return new URL("../../assets/blueprints/blueprint-schema.json", import.meta.url).toString();
+  return new URL(
+    "../../assets/blueprints/blueprint-schema.json",
+    import.meta.url,
+  ).toString();
 }
 
 export function buildDefaultBlueprint(config) {
@@ -290,13 +317,17 @@ export function buildDefaultBlueprint(config) {
 }
 
 export function normalizeBlueprint(input, config) {
-  const blueprint = (input && typeof input === "object" && !Array.isArray(input))
-    ? structuredClone(input)
-    : {};
+  const blueprint =
+    input && typeof input === "object" && !Array.isArray(input)
+      ? structuredClone(input)
+      : {};
   const fallback = buildDefaultBlueprint(config);
 
   return {
-    $schema: typeof blueprint.$schema === "string" ? blueprint.$schema : fallback.$schema,
+    $schema:
+      typeof blueprint.$schema === "string"
+        ? blueprint.$schema
+        : fallback.$schema,
     meta: {
       title: blueprint.meta?.title || fallback.meta.title,
       author: blueprint.meta?.author || fallback.meta.author,
@@ -305,11 +336,15 @@ export function normalizeBlueprint(input, config) {
     debug: {
       enabled: blueprint.debug?.enabled === true,
     },
-    landingPage: normalizePath(blueprint.landingPage || blueprint.landingPath || fallback.landingPage, fallback.landingPage),
+    landingPage: normalizePath(
+      blueprint.landingPage || blueprint.landingPath || fallback.landingPage,
+      fallback.landingPage,
+    ),
     siteOptions: {
       title: blueprint.siteOptions?.title || fallback.siteOptions.title,
       locale: blueprint.siteOptions?.locale || fallback.siteOptions.locale,
-      timezone: blueprint.siteOptions?.timezone || fallback.siteOptions.timezone,
+      timezone:
+        blueprint.siteOptions?.timezone || fallback.siteOptions.timezone,
     },
     login: {
       username: blueprint.login?.username || fallback.login.username,
@@ -349,7 +384,10 @@ export function saveActiveBlueprint(scopeId, blueprint) {
     return;
   }
 
-  window.sessionStorage.setItem(getBlueprintStorageKey(scopeId), JSON.stringify(blueprint));
+  window.sessionStorage.setItem(
+    getBlueprintStorageKey(scopeId),
+    JSON.stringify(blueprint),
+  );
 }
 
 export function loadActiveBlueprint(scopeId) {
@@ -384,9 +422,14 @@ export async function resolveBlueprintForShell(scopeId, config) {
 
   const blueprintParam = url.searchParams.get("blueprint");
   if (blueprintParam) {
-    const response = await fetch(new URL(blueprintParam, window.location.href), { cache: "no-store" });
+    const response = await fetch(
+      new URL(blueprintParam, window.location.href),
+      { cache: "no-store" },
+    );
     if (!response.ok) {
-      throw new Error(`Unable to load blueprint from ${blueprintParam}: ${response.status}`);
+      throw new Error(
+        `Unable to load blueprint from ${blueprintParam}: ${response.status}`,
+      );
     }
     const payload = normalizeBlueprint(await response.json(), config);
     saveActiveBlueprint(scopeId, payload);
@@ -399,7 +442,10 @@ export async function resolveBlueprintForShell(scopeId, config) {
   }
 
   if (config.defaultBlueprintUrl) {
-    const response = await fetch(new URL(config.defaultBlueprintUrl, window.location.href), { cache: "no-store" });
+    const response = await fetch(
+      new URL(config.defaultBlueprintUrl, window.location.href),
+      { cache: "no-store" },
+    );
     if (!response.ok) {
       throw new Error(`Unable to load default blueprint: ${response.status}`);
     }

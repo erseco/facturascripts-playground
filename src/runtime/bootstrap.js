@@ -1,20 +1,22 @@
-import { buildEffectivePlaygroundConfig, normalizeBlueprint } from "../shared/blueprint.js";
+import {
+  buildEffectivePlaygroundConfig,
+  normalizeBlueprint,
+} from "../shared/blueprint.js";
 import { materializeBlueprintAddons } from "./addons.js";
-import { fetchManifest, buildManifestState } from "./manifest.js";
+import { buildManifestState, fetchManifest } from "./manifest.js";
 import { mountReadonlyCore } from "./vfs.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 export const PLAYGROUND_DB_PATH = "/persist/mutable/db/facturascripts.sqlite";
-export const PLAYGROUND_CONFIG_PATH = "/persist/mutable/config/playground-state.json";
+export const PLAYGROUND_CONFIG_PATH =
+  "/persist/mutable/config/playground-state.json";
 export const PLAYGROUND_PREPEND_PATH = "/config/playground-prepend.php";
 export const FS_ROOT = "/www/facturascripts";
 
 function phpString(value) {
-  return String(value)
-    .replaceAll("\\", "\\\\")
-    .replaceAll("'", "\\'");
+  return String(value).replaceAll("\\", "\\\\").replaceAll("'", "\\'");
 }
 
 function phpBoolean(value) {
@@ -565,7 +567,7 @@ echo json_encode(['ok' => true, 'skipped' => false]);
 `;
 }
 
-function buildProbeScript() {
+function _buildProbeScript() {
   return `<?php
 $ok = true;
 $results = [];
@@ -610,7 +612,7 @@ function ensureDirSync(FS, path) {
   }
 }
 
-function removeNodeIfPresent(FS, path) {
+function _removeNodeIfPresent(FS, path) {
   const about = FS.analyzePath(path);
   if (!about.exists) {
     return;
@@ -622,7 +624,7 @@ function removeNodeIfPresent(FS, path) {
       if (entry === "." || entry === "..") {
         continue;
       }
-      removeNodeIfPresent(FS, `${path}/${entry}`.replace(/\/{2,}/gu, "/"));
+      _removeNodeIfPresent(FS, `${path}/${entry}`.replace(/\/{2,}/gu, "/"));
     }
     FS.rmdir(path);
     return;
@@ -638,7 +640,10 @@ function pathExists(FS, path) {
 function writeFileSafe(FS, path, content) {
   const parentDir = path.split("/").slice(0, -1).join("/") || "/";
   ensureDirSync(FS, parentDir);
-  FS.writeFile(path, typeof content === "string" ? encoder.encode(content) : content);
+  FS.writeFile(
+    path,
+    typeof content === "string" ? encoder.encode(content) : content,
+  );
 }
 
 function readPlaygroundState(FS) {
@@ -697,9 +702,15 @@ async function performAutologin(php, config, FS, publish) {
   const scriptPath = `${FS_ROOT}/_playground_autologin.php`;
   writeFileSafe(FS, scriptPath, buildAutologinScript(config.admin.username));
 
-  const response = await php.request(new Request("http://localhost/_playground_autologin.php"));
+  const response = await php.request(
+    new Request("http://localhost/_playground_autologin.php"),
+  );
   const text = await response.text();
-  try { FS.unlink(scriptPath); } catch { /* ignore */ }
+  try {
+    FS.unlink(scriptPath);
+  } catch {
+    /* ignore */
+  }
 
   try {
     const result = JSON.parse(text);
@@ -719,12 +730,22 @@ async function performAutologin(php, config, FS, publish) {
     }
 
     return { ok: true };
-  } catch (err) {
-    return { ok: false, warning: `Autologin script returned unexpected output: ${text.substring(0, 200)}` };
+  } catch (_err) {
+    return {
+      ok: false,
+      warning: `Autologin script returned unexpected output: ${text.substring(0, 200)}`,
+    };
   }
 }
 
-export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: rawBlueprint, clean, php, publish, runtimeId }) {
+export async function bootstrapFacturaScripts({
+  config: rawConfig,
+  blueprint: rawBlueprint,
+  clean,
+  php,
+  publish,
+  runtimeId,
+}) {
   const blueprint = rawBlueprint
     ? normalizeBlueprint(rawBlueprint, rawConfig)
     : normalizeBlueprint({}, rawConfig);
@@ -732,9 +753,13 @@ export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: ra
   const binary = await php.binary;
   const { FS } = binary;
 
-  publish("Loading FacturaScripts manifest.", 0.20);
+  publish("Loading FacturaScripts manifest.", 0.2);
   const manifest = await fetchManifest();
-  const manifestState = buildManifestState(manifest, runtimeId, rawConfig.bundleVersion);
+  const manifestState = buildManifestState(
+    manifest,
+    runtimeId,
+    rawConfig.bundleVersion,
+  );
 
   // Check existing state
   const existingState = readPlaygroundState(FS);
@@ -742,11 +767,19 @@ export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: ra
   const versionMatch = existingState?.manifestVersion === manifestVersion;
   const skipInstall = versionMatch && !clean;
 
-  if (!skipInstall && (clean || (existingState && !versionMatch && rawConfig.resetOnVersionMismatch))) {
+  if (
+    !skipInstall &&
+    (clean ||
+      (existingState && !versionMatch && rawConfig.resetOnVersionMismatch))
+  ) {
     publish("Cleaning previous state.", 0.22);
     for (const path of [PLAYGROUND_DB_PATH, PLAYGROUND_CONFIG_PATH]) {
       if (pathExists(FS, path)) {
-        try { FS.unlink(path); } catch { /* ignore */ }
+        try {
+          FS.unlink(path);
+        } catch {
+          /* ignore */
+        }
       }
     }
   }
@@ -759,7 +792,7 @@ export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: ra
   // Directories are created directly inside the docroot. The VFS is readonly on
   // disk but Emscripten's MEMFS overlay allows in-memory writes on top of it.
   // Symlinks don't work reliably in MEMFS, so we create real directories.
-  publish("Creating mutable directory layout.", 0.40);
+  publish("Creating mutable directory layout.", 0.4);
   const mutableDirs = [
     "/persist/mutable/db",
     "/persist/mutable/config",
@@ -811,9 +844,15 @@ export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: ra
   const installScriptPath = `${FS_ROOT}/_playground_install.php`;
   writeFileSafe(FS, installScriptPath, buildInstallScript());
 
-  const installResponse = await php.request(new Request("http://localhost/_playground_install.php"));
+  const installResponse = await php.request(
+    new Request("http://localhost/_playground_install.php"),
+  );
   const installText = await installResponse.text();
-  try { FS.unlink(installScriptPath); } catch { /* ignore */ }
+  try {
+    FS.unlink(installScriptPath);
+  } catch {
+    /* ignore */
+  }
   if (!installText.includes("INSTALL_OK")) {
     throw new Error(`FacturaScripts deploy failed:\n${installText}`);
   }
@@ -821,7 +860,9 @@ export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: ra
   if (!skipInstall) {
     // First request to / to trigger initial setup (creates admin user etc.)
     publish("Triggering first-run setup.", 0.65);
-    const firstRunResponse = await php.request(new Request("http://localhost/"));
+    const firstRunResponse = await php.request(
+      new Request("http://localhost/"),
+    );
     const firstRunStatus = firstRunResponse.status;
     if (firstRunStatus >= 500) {
       const body = await firstRunResponse.text();
@@ -833,9 +874,15 @@ export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: ra
     const wizardScriptPath = `${FS_ROOT}/_playground_wizard.php`;
     writeFileSafe(FS, wizardScriptPath, buildWizardScript(config));
 
-    const wizardResponse = await php.request(new Request("http://localhost/_playground_wizard.php"));
+    const wizardResponse = await php.request(
+      new Request("http://localhost/_playground_wizard.php"),
+    );
     const wizardText = await wizardResponse.text();
-    try { FS.unlink(wizardScriptPath); } catch { /* ignore */ }
+    try {
+      FS.unlink(wizardScriptPath);
+    } catch {
+      /* ignore */
+    }
 
     try {
       const wizardResult = JSON.parse(wizardText);
@@ -844,7 +891,9 @@ export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: ra
       }
     } catch (err) {
       if (err instanceof SyntaxError) {
-        throw new Error(`Wizard script returned unexpected output:\n${wizardText.substring(0, 500)}`);
+        throw new Error(
+          `Wizard script returned unexpected output:\n${wizardText.substring(0, 500)}`,
+        );
       }
       throw err;
     }
@@ -860,7 +909,10 @@ export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: ra
       },
     });
   } else {
-    publish("Persistent database matches current version. Skipping table creation.", 0.70);
+    publish(
+      "Persistent database matches current version. Skipping table creation.",
+      0.7,
+    );
   }
 
   await materializeBlueprintAddons({
@@ -872,12 +924,12 @@ export async function bootstrapFacturaScripts({ config: rawConfig, blueprint: ra
     manifestVersion,
   });
 
-  let readyPath = blueprint.landingPage || config.landingPath || "/";
+  const readyPath = blueprint.landingPage || config.landingPath || "/";
 
   if (config.autologin) {
     const autologin = await performAutologin(php, config, FS, publish);
     if (autologin.ok) {
-      publish("Autologin successful.", 0.90);
+      publish("Autologin successful.", 0.9);
     } else if (autologin.warning) {
       publish(`[warning] ${autologin.warning}`, 0.92);
     }

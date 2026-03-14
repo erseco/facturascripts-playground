@@ -1,5 +1,5 @@
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import { buildWizardScript } from "../src/runtime/bootstrap.js";
 
 const baseConfig = {
@@ -42,8 +42,20 @@ describe("buildWizardScript", () => {
 
   it("initializes all required models", () => {
     const script = buildWizardScript(baseConfig);
-    for (const model of ["AttachedFile", "Diario", "EstadoDocumento", "FormaPago", "Impuesto", "Retencion", "Serie", "Provincia"]) {
-      assert.ok(script.includes(model), `Script should reference model ${model}`);
+    for (const model of [
+      "AttachedFile",
+      "Diario",
+      "EstadoDocumento",
+      "FormaPago",
+      "Impuesto",
+      "Retencion",
+      "Serie",
+      "Provincia",
+    ]) {
+      assert.ok(
+        script.includes(model),
+        `Script should reference model ${model}`,
+      );
     }
   });
 

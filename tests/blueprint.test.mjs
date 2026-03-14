@@ -1,6 +1,11 @@
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeBlueprint, buildDefaultBlueprint, buildEffectivePlaygroundConfig, normalizeInstall } from "../src/shared/blueprint.js";
+import { describe, it } from "node:test";
+import {
+  buildDefaultBlueprint,
+  buildEffectivePlaygroundConfig,
+  normalizeBlueprint,
+  normalizeInstall,
+} from "../src/shared/blueprint.js";
 
 const baseConfig = {
   siteTitle: "Test Playground",
@@ -78,9 +83,12 @@ describe("normalizeBlueprint with install", () => {
   });
 
   it("preserves custom install values", () => {
-    const result = normalizeBlueprint({
-      install: { codpais: "FRA", empresa: "Test Co" },
-    }, baseConfig);
+    const result = normalizeBlueprint(
+      {
+        install: { codpais: "FRA", empresa: "Test Co" },
+      },
+      baseConfig,
+    );
     assert.equal(result.install.codpais, "FRA");
     assert.equal(result.install.empresa, "Test Co");
     assert.equal(result.install.regimeniva, "General");
@@ -98,7 +106,10 @@ describe("buildDefaultBlueprint with install", () => {
 
 describe("buildEffectivePlaygroundConfig with install", () => {
   it("includes install in effective config", () => {
-    const blueprint = normalizeBlueprint({ install: { codpais: "DEU" } }, baseConfig);
+    const blueprint = normalizeBlueprint(
+      { install: { codpais: "DEU" } },
+      baseConfig,
+    );
     const effective = buildEffectivePlaygroundConfig(baseConfig, blueprint);
     assert.ok(effective.install);
     assert.equal(effective.install.codpais, "DEU");
