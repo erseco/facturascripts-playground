@@ -94,12 +94,9 @@ describe("buildWizardScript", () => {
     assert.ok(!script.includes("L'Empresa"));
   });
 
-  it("includes second deploy after Dinamic model loading", () => {
+  it("does not include deploy call (handled by bootstrap)", () => {
     const script = buildWizardScript(baseConfig);
-    assert.ok(
-      script.includes("deploy(true, true)"),
-      "Script should include a deploy call after loading Dinamic models",
-    );
+    assert.ok(!script.includes("deploy(true, true)"));
   });
 
   it("sets user homepage to Dashboard", () => {
