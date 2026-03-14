@@ -561,7 +561,7 @@ if (is_dir($dinamicModelDir)) {
 }
 
 // Run deploy again after all models are loaded (mirrors real Wizard step 3)
-$pluginManager = new FacturaScripts\\\\Core\\\\Plugins();
+$pluginManager = new FacturaScripts\\Core\\Plugins();
 $pluginManager->deploy(true, true);
 
 // Set default employee role
