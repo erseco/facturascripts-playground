@@ -32,7 +32,7 @@ perl -pi -e 's/public function updateActivity\(string \$ipAddress, string \$brow
 perl -pi -e "s/\\\$browser = \\\$this->request->header\\('User-Agent'\\);/\\\$browser = \\\$this->request->header('User-Agent') ?? '';/" "$FS_STAGE/Core/Base/Controller.php"
 
 if command -v composer >/dev/null 2>&1; then
-  composer install --working-dir="$FS_STAGE" --no-dev --prefer-dist --no-progress --no-interaction >&2
+  composer install --working-dir="$FS_STAGE" --no-dev --prefer-dist --no-progress --no-interaction --ignore-platform-reqs >&2
 else
   echo "composer is required to materialize FacturaScripts vendor dependencies for the browser bundle." >&2
   exit 1
