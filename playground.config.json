@@ -30,8 +30,52 @@
   },
   "runtimes": [
     {
+      "id": "php81-cgi",
+      "label": "PHP 8.1",
+      "phpVersionLabel": "8.1",
+      "assetBase": "./vendor",
+      "cgiWasmPath": "./vendor/php-cgi-wasm",
+      "sharedLibs": [
+        "dom",
+        "gd",
+        "iconv",
+        "intl",
+        "libxml",
+        "sqlite",
+        "simplexml",
+        "zlib",
+        "zip",
+        "mbstring",
+        "openssl",
+        "phar"
+      ],
+      "default": false
+    },
+    {
+      "id": "php82-cgi",
+      "label": "PHP 8.2",
+      "phpVersionLabel": "8.2",
+      "assetBase": "./vendor",
+      "cgiWasmPath": "./vendor/php-cgi-wasm",
+      "sharedLibs": [
+        "dom",
+        "gd",
+        "iconv",
+        "intl",
+        "libxml",
+        "sqlite",
+        "simplexml",
+        "zlib",
+        "zip",
+        "mbstring",
+        "openssl",
+        "phar"
+      ],
+      "default": false
+    },
+    {
       "id": "php83-cgi",
-      "label": "PHP 8.3 CGI",
+      "label": "PHP 8.3",
       "phpVersionLabel": "8.3",
       "assetBase": "./vendor",
       "cgiWasmPath": "./vendor/php-cgi-wasm",
@@ -50,6 +94,50 @@
         "phar"
       ],
       "default": true
+    },
+    {
+      "id": "php84-cgi",
+      "label": "PHP 8.4",
+      "phpVersionLabel": "8.4",
+      "assetBase": "./vendor",
+      "cgiWasmPath": "./vendor/php-cgi-wasm",
+      "sharedLibs": [
+        "dom",
+        "gd",
+        "iconv",
+        "intl",
+        "libxml",
+        "sqlite",
+        "simplexml",
+        "zlib",
+        "zip",
+        "mbstring",
+        "openssl",
+        "phar"
+      ],
+      "default": false
+    },
+    {
+      "id": "php85-cgi",
+      "label": "PHP 8.5",
+      "phpVersionLabel": "8.5",
+      "assetBase": "./vendor",
+      "cgiWasmPath": "./vendor/php-cgi-wasm",
+      "sharedLibs": [
+        "dom",
+        "gd",
+        "iconv",
+        "intl",
+        "libxml",
+        "sqlite",
+        "simplexml",
+        "zlib",
+        "zip",
+        "mbstring",
+        "openssl",
+        "phar"
+      ],
+      "default": false
     }
   ]
 }
