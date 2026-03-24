@@ -25,3 +25,13 @@ export function getDefaultRuntime(config) {
     config.runtimes.find((runtime) => runtime.default) || config.runtimes[0]
   );
 }
+
+import { buildEffectivePlaygroundConfig as _buildEffectivePlaygroundConfig, normalizeBlueprint as _normalizeBlueprint } from "./blueprint.js";
+
+export function buildEffectivePlaygroundConfig(config, blueprint) {
+    return _buildEffectivePlaygroundConfig(config, blueprint);
+}
+
+export function normalizeBlueprint(input, config) {
+    return _normalizeBlueprint(input, config);
+}

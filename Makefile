@@ -2,41 +2,16 @@ PORT ?= 8085
 FS_REF ?= https://github.com/erseco/facturascripts.git
 FS_REF_BRANCH ?= feature/add-sqlite-support
 
-# Basic usage:
-#   make help      Show the available targets and common overrides
-#   make up        Install deps, prepare runtime assets, build FacturaScripts, and start the dev server
-#   make serve     Start only the local dev server
-#   make bundle    Rebuild the readonly FacturaScripts bundle
-#
-# Common overrides:
-#   make serve PORT=9090
-#   make bundle FS_REF=https://github.com/<org>/facturascripts.git FS_REF_BRANCH=<branch>
-
 .PHONY: help up deps prepare bundle serve test lint format clean reset
 
 help:
-	@printf '%s\n' \
-		'FacturaScripts Playground Make targets:' \
-		'' \
-		'  make deps      Install npm dependencies' \
-		'  make prepare   Sync browser deps and prepare runtime assets' \
-		'  make bundle    Build the readonly FacturaScripts bundle' \
-		'  make serve     Start the local dev server' \
-		'  make up        Run bundle + serve' \
-		'  make test      Run unit tests' \
-		'  make lint      Run Biome linter' \
-		'  make format    Auto-fix lint and formatting issues' \
-		'  make clean     Remove generated caches and bundle artifacts' \
-		'  make reset     Alias of clean plus cache reset' \
-		'' \
-		'Common overrides:' \
-		'  PORT=9090 make serve' \
-		'  FS_REF=<repo> FS_REF_BRANCH=<branch> make bundle'
+	@printf '%s\n' 'FacturaScripts Playground Make targets:' '' '  make deps      Install npm dependencies' '  make prepare   Sync browser deps and prepare runtime assets' '  make bundle    Build the readonly FacturaScripts bundle' '  make serve     Start the local dev server' '  make up        Run bundle + serve' '  make test      Run unit tests' '  make lint      Run Biome linter' '  make format    Auto-fix lint and formatting issues' '  make clean     Remove generated caches and bundle artifacts' '  make reset     Alias of clean plus cache reset' '' 'Common overrides:' '  PORT=9090 make serve' '  FS_REF=<repo> FS_REF_BRANCH=<branch> make bundle'
 
 deps:
 	npm install
 
 prepare: deps
+	npm run build-worker
 	npm run sync-browser-deps
 	npm run prepare-runtime
 
@@ -60,6 +35,7 @@ up: bundle serve
 clean:
 	rm -rf .cache
 	rm -rf vendor
+	rm -rf dist
 	rm -rf assets/facturascripts/*
 	rm -rf assets/manifests/*
 	touch assets/facturascripts/.gitkeep assets/manifests/.gitkeep
