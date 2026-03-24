@@ -34,8 +34,6 @@ const els = {
   phpInfoTab: document.querySelector("#phpinfo-tab"),
   refreshPhpInfoButton: document.querySelector("#refresh-phpinfo-button"),
   refresh: document.querySelector("#refresh-button"),
-  homeButton: document.querySelector("#home-button"),
-  adminButton: document.querySelector("#admin-button"),
   reset: document.querySelector("#reset-button"),
   settingsButton: document.querySelector("#settings-button"),
   settingsPopover: document.querySelector("#settings-popover"),
@@ -80,8 +78,6 @@ function appendLog(message, isError = false) {
 function setUiLocked(locked) {
   uiLocked = locked;
   els.address.disabled = locked;
-  els.homeButton.disabled = locked;
-  els.adminButton.disabled = locked;
   els.refreshPhpInfoButton.disabled = locked;
   els.reset.disabled = locked;
   els.exportButton.disabled = locked;
@@ -175,14 +171,6 @@ function refreshWithinRuntime() {
   }
 
   void updateFrame();
-}
-
-function navigateHome() {
-  navigateWithinRuntime("/");
-}
-
-function navigateAdmin() {
-  navigateWithinRuntime("/admin");
 }
 
 function restartRuntime() {
@@ -515,8 +503,6 @@ els.refresh.addEventListener("click", () => {
   restartRuntime();
 });
 
-els.homeButton.addEventListener("click", navigateHome);
-els.adminButton.addEventListener("click", navigateAdmin);
 els.panelToggle.addEventListener("click", toggleSidePanel);
 els.infoTab.addEventListener("click", () => setActivePanel("info"));
 els.logsTab.addEventListener("click", () => setActivePanel("logs"));

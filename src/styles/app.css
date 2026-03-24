@@ -231,7 +231,6 @@ button.danger:hover {
 }
 
 .address-form__input input:disabled,
-.toolbar-link:disabled,
 .settings-field select:disabled,
 .settings-actions button:disabled {
   cursor: not-allowed;
@@ -292,20 +291,6 @@ button.danger:hover {
 .icon-button:hover {
   background: var(--color-gray-100);
   color: var(--text);
-  border-color: transparent;
-}
-
-.toolbar-link {
-  background: transparent;
-  border-color: transparent;
-  color: var(--chrome-text-muted);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.toolbar-link:hover {
-  color: var(--chrome-text);
-  background: var(--chrome-hover);
   border-color: transparent;
 }
 
@@ -777,11 +762,6 @@ button.danger:hover {
   }
 
   .address-form__input {
-    display: none;
-  }
-
-  #home-button,
-  #admin-button {
     display: none;
   }
 
