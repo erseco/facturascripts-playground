@@ -11,6 +11,12 @@ MAINTENANCE: Update this file when:
 
 This file provides guidance to AI coding agents when working with this repository.
 
+**IMPORTANT:** Before making changes, read `CHANGELOG-TECHNICAL.md` — it documents
+past investigations, decisions, and known limitations. This avoids re-investigating
+solved problems and explains why certain non-obvious choices were made (e.g., why
+Intl is disabled, why the prepend path is at `/internal/shared/auto_prepend_file.php`,
+why `Plugins::deploy(true, true)` is used instead of `deploy()`).
+
 ## Project overview
 
 FacturaScripts Playground runs a full FacturaScripts instance entirely in the browser using WebAssembly.
@@ -77,7 +83,7 @@ index.html
               -> php-worker.js
                  -> src/runtime/bootstrap.js
                  -> src/runtime/vfs.js
-                 -> php-cgi-wasm
+                 -> @php-wasm/web (via php-loader.js + php-compat.js)
 ```
 
 Responsibilities:
@@ -89,7 +95,7 @@ Responsibilities:
 - `sw.js`
   - intercepts same-origin requests and routes them to the scoped runtime
 - `php-worker.js`
-  - owns the `php-cgi-wasm` instance for a scope
+  - owns the @php-wasm/web PHP instance for a scope, with crash recovery
 - `src/runtime/bootstrap.js`
   - mounts the core, writes config, runs deploy, handles first boot and autologin
 - `src/runtime/vfs.js`
@@ -111,8 +117,8 @@ Relevant files:
 
 - `scripts/build-facturascripts-bundle.sh`
 - `scripts/fetch-facturascripts-source.sh`
-- `scripts/build-vfs-image.mjs`
 - `scripts/generate-manifest.mjs`
+- `scripts/esbuild.worker.mjs`
 - `src/runtime/manifest.js`
 
 Default build source:
@@ -156,7 +162,7 @@ Current blueprint focus:
 - login credentials
 - declarative plugin list
 
-Plugin download/materialization is not implemented yet. `src/runtime/addons.js` is currently a stub.
+Plugin download/materialization is implemented in `src/runtime/addons.js`.
 
 ## Development conventions
 
@@ -201,17 +207,27 @@ If a change touches routing or boot behavior, prefer checking real browser behav
 ## Key files
 
 - `index.html`: shell UI
-- `remote.html`: runtime host page
-- `sw.js`: service worker routing
-- `php-worker.js`: PHP worker bridge and boot lifecycle
+- `remote.html`: runtime host page (loading overlay with progress bar)
+- `sw.js`: service worker routing and static asset caching
+- `php-worker.js`: PHP worker bridge, boot lifecycle, crash recovery, request tracing
 - `playground.config.json`: runtime defaults
-- `src/runtime/bootstrap.js`: installation, config writing, autologin
+- `src/runtime/bootstrap.js`: installation, config writing, autologin, Forja cache
+- `src/runtime/php-loader.js`: @php-wasm/web runtime creation, OPcache config, fs-persistence
+- `src/runtime/php-compat.js`: wraps @php-wasm PHP instance with cookie jar, front-controller routing
+- `src/runtime/fs-persistence.js`: IndexedDB-backed filesystem journal
+- `src/runtime/crash-recovery.js`: WASM crash detection, snapshot, automatic restart
 - `src/runtime/vfs.js`: readonly core bundle mounting
 - `src/runtime/manifest.js`: manifest loading
+- `src/runtime/addons.js`: blueprint plugin install/activate and seed data
+- `src/runtime/networking.js`: proxy URL resolution for plugin downloads
 - `src/shared/blueprint.js`: blueprint parsing and normalization
+- `src/shared/config.js`: playground configuration loading and merging
+- `src/shared/paths.js`: path resolution utilities for subdirectory hosting
+- `src/shared/protocol.js`: BroadcastChannel naming and worker request IDs
 - `src/shared/storage.js`: browser persistence helpers
 - `src/styles/app.css`: shell styling
 - `Makefile`: common local workflow
+- `CHANGELOG-TECHNICAL.md`: decision log — read before making changes
 
 ## Common pitfalls
 
@@ -220,6 +236,13 @@ If a change touches routing or boot behavior, prefer checking real browser behav
 - Do not assume plugins declared in blueprint are automatically installed.
 - Do not break the separation between readonly core and mutable overlay.
 - Do not forget that service worker changes may require a hard refresh.
+- The real curl extension in @php-wasm/web does NOT go through `globalThis.fetch`. JS fetch blockers do not intercept curl calls. Use PHP-side cache pre-population instead.
+- The `auto_prepend_file` must be at `/internal/shared/auto_prepend_file.php` — this is the only path @php-wasm reads. Writing to other paths has no effect.
+- `Plugins::deploy()` must be called with `(true, true)` to populate the `pages` table. Without `initControllers`, FK constraints on `users.homepage` fail.
+- `opcache.file_cache_only` must be `1` in WASM (shared memory OPcache needs COOP/COEP headers).
+- FacturaScripts uses `parent.document.location` for row click navigation. The SW injects a `parent === window` override in every HTML response. Do not remove this or iframe navigation breaks.
+- The SW rewrites `data-href` attributes alongside `href`/`src`/`action`. FacturaScripts stores navigation URLs in `data-href` on `<tr class="clickableRow">`.
+- `Cache::clear()` in FacturaScripts deletes ALL `.cache` files including Forja cache. Bootstrap patches `Cache.php` in MEMFS to exclude `forja_*` files. Without this, plugin enable/disable triggers 20s curl timeouts.
 
 ## Area-specific guidance
 
@@ -249,7 +272,16 @@ After changes to `sw.js`, `remote.html`, or runtime boot files:
 - force-refresh the browser or clear the old service worker
 - verify from a clean scope when possible
 
+## Performance notes
+
+- Plugin operations (install/enable) take ~20s. This is pure PHP execution in WASM (`Plugins::deploy` + `initControllers` for 111 controllers). No network calls involved. See `CHANGELOG-TECHNICAL.md` for details.
+- Page loads take ~5-15s depending on complexity. OPcache file cache helps on warm loads.
+- Intl extension is disabled to reduce download size (~27MB ICU data). FacturaScripts does not require it.
+- Forja cache files must be pre-populated before any PHP request to avoid 10s curl timeouts.
+
 ## Reference projects
 
-- WordPress Playground: architectural inspiration
+- WordPress Playground: architectural inspiration, @php-wasm/web source
 - FacturaScripts: application runtime being packaged
+- Moodle Playground (`/Users/ernesto/Downloads/git/moodle-playground/`): same @php-wasm stack, reference for patterns
+- Omeka-S Playground: original source of `php-compat.js` (now adapted for FacturaScripts)

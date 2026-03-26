@@ -6,6 +6,8 @@ import { saveSessionState } from "../shared/storage.js";
 
 const overlayEl = document.querySelector(".remote-boot__card");
 const statusEl = document.querySelector("#remote-status");
+const progressFillEl = document.querySelector("#progress-fill");
+const progressPercentEl = document.querySelector("#progress-percent");
 const frameEl = document.querySelector("#remote-frame");
 let phpWorker;
 let _activeScopeId;
@@ -17,9 +19,18 @@ function setOverlayVisible(isVisible) {
   overlayEl?.classList.toggle("is-hidden", !isVisible);
 }
 
-function setRemoteProgress(detail, _progress = null) {
+function setRemoteProgress(detail, progress = null) {
   if (statusEl && detail) {
     statusEl.textContent = detail;
+  }
+  if (typeof progress === "number") {
+    const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100);
+    if (progressFillEl) {
+      progressFillEl.style.width = `${pct}%`;
+    }
+    if (progressPercentEl) {
+      progressPercentEl.textContent = `${pct}%`;
+    }
   }
 }
 
@@ -184,6 +195,12 @@ function bindShellCommands(scopeId, runtimeId) {
 
     if (message?.kind === "refresh-site") {
       navigateFrame(scopeId, runtimeId, activePath || "/", { reload: true });
+      return;
+    }
+
+    if (message?.kind === "capture-phpinfo" && phpWorker) {
+      phpWorker.postMessage({ kind: "capture-phpinfo" });
+      return;
     }
   });
 }
@@ -219,8 +236,17 @@ async function bootstrapRemote() {
   await waitForServiceWorkerControl();
   setRemoteProgress("Service Worker ready and controlling this tab.", 0.12);
 
+  if (forceCleanBoot && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({
+      kind: "clear-static-cache",
+    });
+  }
+
   if (!phpWorker) {
-    const workerUrl = new URL("../../php-worker.js", import.meta.url);
+    const workerUrl = new URL(
+      "../../dist/php-worker.bundle.js",
+      import.meta.url,
+    );
     workerUrl.searchParams.set("scope", scopeId);
     workerUrl.searchParams.set("runtime", runtime.id);
     phpWorker = new Worker(workerUrl, { type: "module" });
@@ -253,6 +279,27 @@ async function bootstrapRemote() {
   saveSessionState(scopeId, {
     runtimeId: runtime.id,
     path: requestedPath,
+  });
+
+  // Listen to the shell channel so bootstrap progress from the PHP worker
+  // (0.2 → 0.95) updates the loading overlay in real time.
+  const shellChannel = new BroadcastChannel(createShellChannel(scopeId));
+  let bootstrapDone = false;
+  shellChannel.addEventListener("message", (event) => {
+    const msg = event.data;
+    if (msg?.kind === "progress") {
+      setRemoteProgress(msg.detail, msg.progress);
+      if (msg.detail?.includes("is ready")) {
+        bootstrapDone = true;
+      }
+    }
+  });
+
+  // Show progress while the iframe loads static assets after bootstrap.
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    if (event.data?.kind === "sw-debug" && bootstrapDone) {
+      setRemoteProgress("Loading page assets\u2026", 0.97);
+    }
   });
 
   bindShellCommands(scopeId, runtime.id);

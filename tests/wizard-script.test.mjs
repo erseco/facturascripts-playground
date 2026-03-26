@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildWizardScript } from "../src/runtime/bootstrap.js";
+import { buildWizardScript } from "../src/runtime/wizard-script.js";
 
 const baseConfig = {
   admin: { username: "admin", email: "admin@example.com", password: "admin" },
@@ -28,30 +28,16 @@ describe("buildWizardScript", () => {
     assert.ok(script.startsWith("<?php"));
   });
 
-  it("includes idempotency guard checking Impuesto count", () => {
+  it("includes require_once for config and autoload", () => {
     const script = buildWizardScript(baseConfig);
-    assert.ok(script.includes("$impuesto->count() > 0"));
-    assert.ok(script.includes("'skipped' => true"));
+    assert.ok(script.includes("require_once"));
+    assert.ok(script.includes("config.php"));
+    assert.ok(script.includes("autoload.php"));
   });
 
-  it("includes country defaults loading", () => {
+  it("initializes core models (Empresa, Almacen, Pais, User)", () => {
     const script = buildWizardScript(baseConfig);
-    assert.ok(script.includes("default.json"));
-    assert.ok(script.includes("Codpais"));
-  });
-
-  it("initializes all required models", () => {
-    const script = buildWizardScript(baseConfig);
-    for (const model of [
-      "AttachedFile",
-      "Diario",
-      "EstadoDocumento",
-      "FormaPago",
-      "Impuesto",
-      "Retencion",
-      "Serie",
-      "Provincia",
-    ]) {
+    for (const model of ["Empresa", "Almacen", "Pais", "User"]) {
       assert.ok(
         script.includes(model),
         `Script should reference model ${model}`,
@@ -59,39 +45,9 @@ describe("buildWizardScript", () => {
     }
   });
 
-  it("includes empresa update", () => {
+  it("includes empresa creation with configured name", () => {
     const script = buildWizardScript(baseConfig);
     assert.ok(script.includes("Empresa Playground"));
-    assert.ok(script.includes("00000014Z"));
-  });
-
-  it("includes accounting plan import when defaultplan is true", () => {
-    const script = buildWizardScript(baseConfig);
-    assert.ok(script.includes("AccountingPlanImport"));
-    assert.ok(script.includes("plan.csv"));
-  });
-
-  it("skips accounting plan import when defaultplan is false", () => {
-    const config = {
-      ...baseConfig,
-      install: { ...baseConfig.install, defaultplan: false },
-    };
-    const script = buildWizardScript(config);
-    // The PHP `if (false)` block will exist but not execute
-    assert.ok(script.includes("if (false)"));
-  });
-
-  it("properly escapes single quotes in values", () => {
-    const config = {
-      admin: { username: "admin", email: "", password: "admin" },
-      install: {
-        ...baseConfig.install,
-        empresa: "L'Empresa",
-      },
-    };
-    const script = buildWizardScript(config);
-    assert.ok(script.includes("L\\'Empresa"));
-    assert.ok(!script.includes("L'Empresa"));
   });
 
   it("does not include deploy call (handled by bootstrap)", () => {
@@ -104,7 +60,7 @@ describe("buildWizardScript", () => {
     assert.ok(script.includes("'Dashboard'"));
   });
 
-  it("includes settings save", () => {
+  it("includes settingsSave", () => {
     const script = buildWizardScript(baseConfig);
     assert.ok(script.includes("settingsSave"));
   });
@@ -116,5 +72,30 @@ describe("buildWizardScript", () => {
     };
     const script = buildWizardScript(config);
     assert.ok(script.includes("'MEX'"));
+  });
+
+  it("includes database connection", () => {
+    const script = buildWizardScript(baseConfig);
+    assert.ok(script.includes("DataBase"));
+    assert.ok(script.includes("connect"));
+  });
+
+  it("creates admin user with configured username", () => {
+    const config = {
+      admin: {
+        username: "testuser",
+        email: "test@test.com",
+        password: "testpass",
+      },
+      install: baseConfig.install,
+    };
+    const script = buildWizardScript(config);
+    assert.ok(script.includes("'testuser'"));
+  });
+
+  it("outputs JSON response", () => {
+    const script = buildWizardScript(baseConfig);
+    assert.ok(script.includes("json_encode"));
+    assert.ok(script.includes("application/json"));
   });
 });

@@ -3,6 +3,15 @@ import { createPhpBridgeChannel, createWorkerRequestId } from "./src/shared/prot
 const bridges = new Map();
 const pending = new Map();
 const clientContexts = new Map();
+
+// Static assets served via PHP are cached after the first request to avoid
+// re-queuing them through the serial PHP worker on every page navigation.
+const STATIC_ASSET_CACHE = "fs-static-assets-v1";
+const STATIC_ASSET_RE = /\.(css|js|woff2?|ttf|otf|eot|png|jpg|jpeg|gif|svg|ico|webp|map)$/iu;
+
+function isStaticAssetPath(requestPath) {
+  return STATIC_ASSET_RE.test(requestPath.split("?")[0]);
+}
 const STATIC_PREFIXES = [
   "/assets/",
   "/src/",
@@ -273,10 +282,20 @@ function rewriteHtmlAttributeUrl(rawValue, { origin, scopeId, runtimeId }) {
 }
 
 function rewriteHtmlDocument(html, scope) {
-  return html.replace(
-    /((?:href|src|action|data-[\w-]*url|data-url|data-action)=["'])([^"']*)(["'])/giu,
+  let result = html.replace(
+    /((?:href|src|action|data-[\w-]*url|data-url|data-action|data-href)=["'])([^"']*)(["'])/giu,
     (match, prefix, rawValue, suffix) => `${prefix}${rewriteHtmlAttributeUrl(rawValue, scope)}${suffix}`,
   );
+
+  // FacturaScripts uses parent.document.location in Custom.js for row click
+  // navigation. Inside the playground iframe, parent is remote.html — not the
+  // FS page — so the click navigates remote.html away and breaks everything.
+  // Inject a script that makes parent === window so navigation stays in the
+  // inner iframe. This matches native FS behavior (where parent IS window).
+  const parentOverride = '<script>try{Object.defineProperty(window,"parent",{get:()=>window})}catch(e){}</script>';
+  result = result.replace(/<head([^>]*)>/iu, `<head$1>${parentOverride}`);
+
+  return result;
 }
 
 async function rewriteScopedHtmlResponse(response, scope) {
@@ -324,6 +343,12 @@ function forwardToPhpWorker({ request, runtimeId, scopeId }) {
   });
 }
 
+self.addEventListener("message", (event) => {
+  if (event.data?.kind === "clear-static-cache") {
+    caches.delete(STATIC_ASSET_CACHE).catch(() => {});
+  }
+});
+
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
 });
@@ -361,6 +386,26 @@ self.addEventListener("fetch", (event) => {
       detail: `Intercepting ${event.request.method} ${url.pathname}`,
     });
 
+    // Serve static assets from cache to avoid saturating the serial PHP worker queue.
+    if (event.request.method === "GET" && isStaticAssetPath(requestPath)) {
+      const cache = await caches.open(STATIC_ASSET_CACHE);
+      const cached = await cache.match(url.toString());
+      if (cached) return cached;
+
+      await broadcastToClients({ kind: "sw-debug", detail: `[sw-bridge] cache miss → worker: ${requestPath}` });
+      const fresh = await forwardToPhpWorker({
+        request: buildPhpRequest(event.request, forwardedUrl),
+        runtimeId,
+        scopeId,
+      }).catch((error) => buildErrorResponse(String(error?.stack || error?.message || error)));
+
+      if (fresh.ok) {
+        cache.put(url.toString(), fresh.clone()).catch(() => {});
+      }
+      return fresh;
+    }
+
+    await broadcastToClients({ kind: "sw-debug", detail: `[sw-bridge] → worker: ${event.request.method} ${requestPath}` });
     const response = await forwardToPhpWorker({
       request: buildPhpRequest(event.request, forwardedUrl),
       runtimeId,
