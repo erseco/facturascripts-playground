@@ -1,4 +1,4 @@
-import { APP_LOCATION, resolveProxyUrl } from "./networking.js";
+import { resolveProxyUrl } from "./networking.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();

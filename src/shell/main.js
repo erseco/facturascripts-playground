@@ -177,7 +177,7 @@ function refreshWithinRuntime() {
   void updateFrame();
 }
 
-function restartRuntime() {
+function _restartRuntime() {
   if (uiLocked) {
     return;
   }

@@ -117,8 +117,8 @@ Relevant files:
 
 - `scripts/build-facturascripts-bundle.sh`
 - `scripts/fetch-facturascripts-source.sh`
-- `scripts/build-vfs-image.mjs`
 - `scripts/generate-manifest.mjs`
+- `scripts/esbuild.worker.mjs`
 - `src/runtime/manifest.js`
 
 Default build source:
