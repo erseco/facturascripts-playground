@@ -1,4 +1,5 @@
 node_modules/
+.playwright-mcp/
 .cache/
 dist/
 site/
