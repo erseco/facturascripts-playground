@@ -219,7 +219,11 @@ If a change touches routing or boot behavior, prefer checking real browser behav
 - `src/runtime/vfs.js`: readonly core bundle mounting
 - `src/runtime/manifest.js`: manifest loading
 - `src/runtime/addons.js`: blueprint plugin install/activate and seed data
+- `src/runtime/networking.js`: proxy URL resolution for plugin downloads
 - `src/shared/blueprint.js`: blueprint parsing and normalization
+- `src/shared/config.js`: playground configuration loading and merging
+- `src/shared/paths.js`: path resolution utilities for subdirectory hosting
+- `src/shared/protocol.js`: BroadcastChannel naming and worker request IDs
 - `src/shared/storage.js`: browser persistence helpers
 - `src/styles/app.css`: shell styling
 - `Makefile`: common local workflow
