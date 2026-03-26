@@ -11,8 +11,8 @@ deps:
 	npm install
 
 prepare: deps
-	npm run build-worker
 	npm run sync-browser-deps
+	npm run build-worker
 	npm run prepare-runtime
 
 bundle: prepare
