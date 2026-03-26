@@ -78,7 +78,7 @@ echo "INSTALL_OK";
 `;
 }
 
-function buildWizardScript(config) {
+export function buildWizardScript(config) {
   const adminPassword = config.admin?.password || "admin";
   const email = config.admin?.email || "admin@example.com";
   return `<?php
