@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildWizardScript } from "../src/runtime/bootstrap.js";
+import { buildWizardScript } from "../src/runtime/wizard-script.js";
 
 const baseConfig = {
   admin: { username: "admin", email: "admin@example.com", password: "admin" },
