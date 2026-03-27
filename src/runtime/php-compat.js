@@ -116,7 +116,6 @@ export function wrapPhpInstance(
   const resolvedWebRoot = webRoot || DEFAULT_WEB_ROOT;
   const emscriptenModule = php[__private__dont__use];
   const parsedAbsoluteUrl = new URL(absoluteUrl);
-  const urlBasePath = parsedAbsoluteUrl.pathname.replace(/\/+$/u, "");
   const cookies = new Map();
 
   return {
@@ -165,9 +164,9 @@ export function wrapPhpInstance(
       const serverVars = {
         DOCUMENT_ROOT: resolvedWebRoot,
         SCRIPT_FILENAME: effectiveScriptPath,
-        SCRIPT_NAME: urlBasePath + scriptRelative,
-        PHP_SELF: urlBasePath + scriptRelative,
-        REQUEST_URI: urlBasePath + urlPath,
+        SCRIPT_NAME: scriptRelative,
+        PHP_SELF: scriptRelative,
+        REQUEST_URI: urlPath,
         REQUEST_METHOD: req.method || "GET",
         QUERY_STRING: queryString,
         SERVER_NAME: parsedAbsoluteUrl.hostname,
