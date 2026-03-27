@@ -2,6 +2,8 @@
 
 FacturaScripts Playground ejecuta [FacturaScripts](https://facturascripts.com) completamente en el navegador con WebAssembly. La idea arquitectonica viene de [WordPress Playground](https://wordpress.github.io/wordpress-playground/), pero el runtime, la configuracion y el proceso de arranque de este repositorio estan adaptados a FacturaScripts.
 
+![Captura de FacturaScripts Playground](https://raw.githubusercontent.com/erseco/facturascripts-playground/main/.github/screenshot.png)
+
 Usa esta documentacion para:
 
 - entender como se monta el runtime en el navegador

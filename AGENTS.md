@@ -47,11 +47,13 @@ npm install
 npm run sync-browser-deps
 npm run prepare-runtime
 npm run bundle
+npm run test:e2e
 make up
 make deps
 make prepare
 make bundle
 make serve
+make test-e2e
 make lint
 make format
 make test
@@ -64,6 +66,7 @@ Important scripts:
 - `npm run sync-browser-deps`: vendors browser runtime dependencies
 - `npm run prepare-runtime`: prepares runtime assets
 - `npm run bundle`: builds the readonly FacturaScripts bundle
+- `npm run test:e2e`: runs the Playwright browser suite
 
 Generated assets:
 
@@ -99,7 +102,7 @@ Responsibilities:
 - `src/runtime/bootstrap.js`
   - mounts the core, writes config, runs deploy, handles first boot and autologin
 - `src/runtime/vfs.js`
-  - mounts the readonly FacturaScripts bundle into the WASM filesystem
+  - helper that mounts the readonly FacturaScripts bundle into the WASM filesystem
 
 ## Storage model
 
@@ -179,6 +182,7 @@ Before committing or submitting a PR, always run:
 make lint      # Run Biome linter — must pass with zero errors
 make format    # Auto-fix lint and formatting issues
 make test      # Run unit tests — all must pass
+make test-e2e  # Run browser e2e tests
 ```
 
 Biome is configured in `biome.json` and checks `src/`, `tests/`, and `scripts/`. Fix any lint errors before committing. Use `make format` to auto-fix formatting and safe lint issues.
@@ -216,7 +220,7 @@ If a change touches routing or boot behavior, prefer checking real browser behav
 - `src/runtime/php-compat.js`: wraps @php-wasm PHP instance with cookie jar, front-controller routing
 - `src/runtime/fs-persistence.js`: IndexedDB-backed filesystem journal
 - `src/runtime/crash-recovery.js`: WASM crash detection, snapshot, automatic restart
-- `src/runtime/vfs.js`: readonly core bundle mounting
+- `src/runtime/vfs.js`: readonly core bundle mount helper
 - `src/runtime/manifest.js`: manifest loading
 - `src/runtime/addons.js`: blueprint plugin install/activate and seed data
 - `src/runtime/networking.js`: proxy URL resolution for plugin downloads
@@ -227,6 +231,8 @@ If a change touches routing or boot behavior, prefer checking real browser behav
 - `src/shared/storage.js`: browser persistence helpers
 - `src/styles/app.css`: shell styling
 - `Makefile`: common local workflow
+- `playwright.config.mjs`: Playwright runner and local web server bootstrap
+- `tests/e2e/`: browser e2e tests for the shell/runtime UI
 - `CHANGELOG-TECHNICAL.md`: decision log — read before making changes
 
 ## Common pitfalls

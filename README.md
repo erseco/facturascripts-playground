@@ -2,9 +2,11 @@
 
 > FacturaScripts en el navegador con WebAssembly y sin servidor tradicional.
 
-FacturaScripts Playground ejecuta una instancia completa de [FacturaScripts](https://facturascripts.com) dentro del navegador usando [`php-cgi-wasm`](https://www.npmjs.com/package/php-cgi-wasm). El core se monta como imagen readonly y el estado mutable se guarda en el almacenamiento del navegador.
+FacturaScripts Playground ejecuta una instancia completa de [FacturaScripts](https://facturascripts.com) dentro del navegador usando [`@php-wasm/web`](https://www.npmjs.com/package/@php-wasm/web). El core se monta como bundle readonly y el estado mutable se guarda en el almacenamiento del navegador.
 
 [FacturaScripts](https://facturascripts.com/) | [Documentacion oficial](https://facturascripts.com/ayuda) | [Codigo fuente de FacturaScripts](https://github.com/NeoRazorX/facturascripts)
+
+![Captura de FacturaScripts Playground](https://raw.githubusercontent.com/erseco/facturascripts-playground/main/.github/screenshot.png)
 
 ## Inicio rapido
 
@@ -39,6 +41,9 @@ La configuracion base esta en [playground.config.json](playground.config.json).
 | `make bundle` | Descarga FacturaScripts, ejecuta Composer, instala assets frontend y genera el bundle readonly |
 | `make serve` | Arranca el servidor local en `PORT` (por defecto `8085`) |
 | `make up` | Ejecuta `make bundle` y luego `make serve` |
+| `make test` | Ejecuta la suite de tests unitarios |
+| `make test-e2e` | Ejecuta los tests browser con Playwright |
+| `make lint` | Ejecuta Biome sobre el repositorio |
 | `make clean` | Limpia cache y artefactos generados |
 
 Overrides utiles:
@@ -59,7 +64,7 @@ index.html          Shell UI
               -> php-worker.js
                  -> src/runtime/bootstrap.js
                  -> src/runtime/vfs.js
-                 -> php-cgi-wasm
+                 -> @php-wasm/web
 ```
 
 En cada arranque, el runtime:
@@ -208,7 +213,7 @@ Durante el build:
 - se parchean algunas comprobaciones de extensiones no disponibles en WASM
 - se ejecuta `composer install`
 - si existe `package.json`, se ejecuta `npm install --production`
-- se genera la imagen VFS en `assets/facturascripts/`
+- se genera el bundle readonly del core en `assets/facturascripts/`
 - se actualiza el manifiesto en `assets/manifests/latest.json`
 
 ## Documentacion adicional

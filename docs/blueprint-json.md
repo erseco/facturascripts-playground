@@ -137,7 +137,7 @@ Si quieres descargar e instalar un plugin remoto, indica la URL directa al ZIP o
 
 Si la URL apunta a una ficha de plugin de FacturaScripts, el playground resuelve automaticamente el enlace `DownloadBuild` y descarga el ZIP correspondiente.
 
-Esto es lo que usa el ejemplo [blueprint-sample.json](/Users/ernesto/Dropbox/Trabajo/git/facturascripts/facturascripts-playground/blueprint-sample.json) para instalar CommandPalette.
+Esto es lo que usa el ejemplo `blueprint-sample.json` para instalar CommandPalette.
 
 Consejos practicos:
 

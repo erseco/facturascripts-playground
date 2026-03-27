@@ -32,10 +32,10 @@ Credenciales por defecto:
 | Runtime host | `remote.html`, `src/remote/main.js` | Registra el service worker y levanta el runtime scoped |
 | Routing | `sw.js`, `php-worker.js` | Convierte peticiones del navegador en peticiones al runtime PHP |
 | Bootstrap | `src/runtime/bootstrap.js` | Escribe `config.php`, ejecuta deploy, inicializa FacturaScripts y autologin |
-| VFS | `src/runtime/vfs.js` | Monta el core readonly de FacturaScripts |
+| Montaje readonly | `src/runtime/vfs.js` | Monta el core readonly de FacturaScripts |
 | Config global | `playground.config.json` | Titulo, locale, timezone, usuario admin, runtimes, autologin |
 | Blueprint por defecto | `assets/blueprints/default.blueprint.json` | Configuracion inicial que se aplica al scope |
-| Bundle readonly | `assets/facturascripts/` | Imagen VFS del core empaquetado |
+| Bundle readonly | `assets/facturascripts/` | Bundle readonly del core empaquetado |
 | Manifiesto | `assets/manifests/latest.json` | Metadatos del bundle actual |
 
 ## Configuracion basica

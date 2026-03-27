@@ -544,10 +544,42 @@ button.danger:hover {
 /* -- PHP info frame ---------------------------------------- */
 .panel-frame {
   width: 100%;
-  min-height: 240px;
+  height: 100%;
+  min-height: 0;
   border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
   background: #fff;
+  display: block;
+}
+
+/* -- WASM warning banner ---------------------------------- */
+.wasm-warning-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  padding: var(--space-md) var(--space-lg);
+  background: #fef3cd;
+  color: #856404;
+  border-bottom: 2px solid #ffc107;
+  font: 14px/1.5 var(--font-family);
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.wasm-warning-banner__text {
+  flex: 1;
+}
+
+.wasm-warning-banner__close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #856404;
+  padding: 0 4px;
 }
 
 /* -- Blueprint textarea ------------------------------------ */

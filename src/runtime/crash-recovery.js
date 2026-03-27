@@ -11,12 +11,25 @@
 import { FS_ROOT, PLAYGROUND_DB_PATH } from "./bootstrap.js";
 
 /**
+ * Detect Emscripten errno 23 (EHOSTUNREACH).  In WASM, outbound curl
+ * calls that cannot reach the host crash with this errno.  Dashboard's
+ * Telemetry/Forja/News HTTP calls trigger it on Firefox/Safari where
+ * Emscripten's networking layer fails to connect.
+ */
+export function isEmscriptenNetworkError(error) {
+  if (!error) return false;
+  return error.errno === 23;
+}
+
+/**
  * Determine whether an error represents a fatal, unrecoverable WASM crash.
  */
 export function isFatalWasmError(error) {
   if (!error) {
     return false;
   }
+
+  if (isEmscriptenNetworkError(error)) return true;
 
   const message = String(error.message || error);
   return (
@@ -25,7 +38,6 @@ export function isFatalWasmError(error) {
     message.includes("memory access out of bounds") ||
     message.includes("unreachable") ||
     message.includes("RuntimeError") ||
-    message.includes("No file descriptors available") ||
     message.includes("Failed opening required")
   );
 }

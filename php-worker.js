@@ -6,6 +6,7 @@ import {
 import { bootstrapFacturaScripts, PLAYGROUND_DB_PATH } from "./src/runtime/bootstrap.js";
 import { createPhpRuntime } from "./src/runtime/php-loader.js";
 import {
+  isEmscriptenNetworkError,
   isFatalWasmError,
   isSafeToReplay,
   formatErrorDetail,
@@ -222,6 +223,20 @@ function installBridgeListener() {
           response: await serializeResponse(response),
         });
       } catch (error) {
+        // Errno 23 (EHOSTUNREACH): outbound curl calls in WASM cannot
+        // reach the host on Firefox/Safari.  Notify the shell so it can
+        // show a user-friendly warning.
+        if (isEmscriptenNetworkError(error)) {
+          const requestUrl = data.request?.url || "";
+          const pagePath =
+            new URL(requestUrl, "http://localhost").pathname || "/";
+          postShell({
+            kind: "wasm-network-error",
+            detail: `Page "${pagePath}" failed — a network call could not complete in this browser's WebAssembly runtime.`,
+            path: pagePath,
+          });
+        }
+
         if (!isFatalWasmError(error)) {
           const detail = formatErrorDetail(error);
           await respondError(data.id, detail, 500);

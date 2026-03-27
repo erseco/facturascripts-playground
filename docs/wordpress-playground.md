@@ -23,7 +23,7 @@ index.html
               -> php-worker.js
                  -> src/runtime/bootstrap.js
                  -> src/runtime/vfs.js
-                 -> php-cgi-wasm
+                 -> @php-wasm/web
 ```
 
 En un arranque limpio, el runtime:
@@ -32,7 +32,7 @@ En un arranque limpio, el runtime:
 2. monta el bundle readonly desde `assets/facturascripts/`
 3. crea la estructura mutable de `/persist` y `/www/facturascripts`
 4. escribe `config.php` y `php.ini`
-5. ejecuta `Plugins()->deploy()` para compilar vistas y assets
+5. ejecuta `Plugins::deploy(true, true)` para compilar vistas y assets
 6. lanza una primera peticion a `/` para la inicializacion de FacturaScripts
 7. realiza autologin si `autologin` esta activado
 
@@ -48,7 +48,7 @@ En un arranque limpio, el runtime:
 
 - el proyecto sigue orientado a navegadores Chromium
 - el estado persistido depende de IndexedDB y Service Workers
-- los plugins remotos aun no se materializan automaticamente
+- los plugins remotos se materializan desde el runtime, pero dependen de `outboundHttp.allowedHosts`
 - cambios en `sw.js` o el bundle pueden requerir hard refresh
 
 ## Referencias
