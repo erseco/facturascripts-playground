@@ -4,6 +4,14 @@ FacturaScripts Playground ejecuta [FacturaScripts](https://facturascripts.com) c
 
 ![Captura de FacturaScripts Playground](https://raw.githubusercontent.com/erseco/facturascripts-playground/main/.github/screenshot.png)
 
+<p align="center">
+  <a href="https://erseco.github.io/facturascripts-playground/">
+    <img src="https://raw.githubusercontent.com/erseco/facturascripts-playground/main/ogimage.png" alt="Probar FacturaScripts en vivo" width="400">
+  </a>
+  <br>
+  <a href="https://erseco.github.io/facturascripts-playground/"><strong>Probar FacturaScripts en vivo</strong></a>
+</p>
+
 Usa esta documentacion para:
 
 - entender como se monta el runtime en el navegador
