@@ -434,8 +434,7 @@ function populateSettingsModal() {
 
 function updateCurrentVersionLabels() {
   if (els.currentFacturascriptsLabel) {
-    els.currentFacturascriptsLabel.textContent =
-      config.bundleVersion || "-";
+    els.currentFacturascriptsLabel.textContent = config.bundleVersion || "-";
   }
   if (els.currentPhpLabel) {
     const runtime = config.runtimes.find((r) => r.id === currentRuntimeId);

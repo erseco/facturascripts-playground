@@ -320,7 +320,7 @@ export async function bootstrapFacturaScripts({
   try {
     const dashPath = `${FS_ROOT}/Core/Controller/Dashboard.php`;
     const dashOriginal = decoder.decode(await php.readFile(dashPath));
-    let dashRaw = dashOriginal
+    const dashRaw = dashOriginal
       .replace(
         "$this->registered = Telemetry::init()->ready();",
         "$this->registered = false;",

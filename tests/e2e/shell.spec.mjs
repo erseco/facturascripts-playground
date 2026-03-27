@@ -71,6 +71,8 @@ test("loads blueprint overrides and exposes runtime settings", async ({
 
   await page.locator("#settings-button").click();
   await expect(page.locator("#settings-popover")).toHaveClass(/is-open/);
-  const optionCount = await page.locator("#settings-php-version option").count();
+  const optionCount = await page
+    .locator("#settings-php-version option")
+    .count();
   expect(optionCount).toBeGreaterThan(0);
 });

@@ -563,7 +563,7 @@ button.danger:hover {
   background: #fef3cd;
   color: #856404;
   border-bottom: 2px solid #ffc107;
-  font: 14px/1.5 var(--font-family);
+  font: 14px / 1.5 var(--font-family);
   display: flex;
   align-items: center;
   gap: var(--space-md);
