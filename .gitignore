@@ -1,8 +1,11 @@
 node_modules/
 .playwright-mcp/
+.playwright/
 .cache/
 dist/
 site/
+playwright-report/
+test-results/
 .venv/
 vendor/
 .DS_Store

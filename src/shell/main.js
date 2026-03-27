@@ -79,6 +79,29 @@ function appendLog(message, isError = false) {
   els.logPanel.scrollTop = els.logPanel.scrollHeight;
 }
 
+function showWasmNetworkWarning(pagePath) {
+  const existing = document.getElementById("wasm-network-warning");
+  if (existing) existing.remove();
+
+  const banner = document.createElement("div");
+  banner.id = "wasm-network-warning";
+  banner.className = "wasm-warning-banner";
+
+  const text = document.createElement("span");
+  text.className = "wasm-warning-banner__text";
+  text.textContent =
+    `The page "${pagePath}" could not load — an outbound network call failed in this browser's WebAssembly runtime. ` +
+    `This is a known limitation on Firefox and Safari. Try a lighter page such as /AdminPlugins.`;
+
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "wasm-warning-banner__close";
+  closeBtn.textContent = "\u00d7";
+  closeBtn.onclick = () => banner.remove();
+
+  banner.append(text, closeBtn);
+  document.body.prepend(banner);
+}
+
 function setUiLocked(locked) {
   uiLocked = locked;
   els.address.disabled = locked;
@@ -199,13 +222,33 @@ function setPhpInfoContent(html = "") {
 
   if (!latestPhpInfoHtml) {
     els.phpInfoFrame.srcdoc = `<!doctype html><meta charset="utf-8"><style>
-      body{font:14px/1.5 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:16px;color:#1f2937;background:#fff}
+      html,body{height:100%}
+      body{margin:0;font:14px/1.5 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:16px;color:#1f2937;background:#fff;box-sizing:border-box}
       p{margin:0}
     </style><p>No PHP diagnostics captured yet.</p>`;
     return;
   }
 
-  els.phpInfoFrame.srcdoc = latestPhpInfoHtml;
+  const responsivePhpInfoHtml = latestPhpInfoHtml.replace(
+    "</head>",
+    `<style>
+      html,body{height:100%}
+      body{margin:0;padding:12px;box-sizing:border-box;overflow:auto;background:#fff;color:#222;font-family:sans-serif}
+      .center{width:100%}
+      .center table{width:100%;max-width:100%;margin:1em auto;text-align:left}
+      table{border-collapse:collapse;border:0;width:100%;max-width:100%;box-shadow:0 1px 3px rgba(0,0,0,.12);table-layout:auto}
+      td,th{border:1px solid #666;font-size:75%;vertical-align:baseline;padding:4px 5px}
+      th{position:sticky;top:0;background:inherit}
+      .e{width:28%;min-width:180px}
+      .v{max-width:none;overflow-wrap:anywhere;word-break:break-word}
+      hr{width:100%;max-width:100%}
+      img{max-width:100%;height:auto}
+      pre{white-space:pre-wrap;overflow-wrap:anywhere}
+      h1,h2{scroll-margin-top:12px}
+    </style></head>`,
+  );
+
+  els.phpInfoFrame.srcdoc = responsivePhpInfoHtml;
 }
 
 function requestPhpInfoCapture() {
@@ -340,6 +383,10 @@ function bindShellChannel() {
         els.address.value = currentPath;
         saveState();
         break;
+      case "wasm-network-error":
+        appendLog(message.detail, true);
+        showWasmNetworkWarning(message.path);
+        break;
       case "error":
         remoteFrameBooted = false;
         setUiLocked(false);
@@ -387,8 +434,7 @@ function populateSettingsModal() {
 
 function updateCurrentVersionLabels() {
   if (els.currentFacturascriptsLabel) {
-    els.currentFacturascriptsLabel.textContent =
-      config.bundleVersion || config.bundleVersion || "-";
+    els.currentFacturascriptsLabel.textContent = config.bundleVersion || "-";
   }
   if (els.currentPhpLabel) {
     const runtime = config.runtimes.find((r) => r.id === currentRuntimeId);

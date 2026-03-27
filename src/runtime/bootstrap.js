@@ -310,6 +310,34 @@ export async function bootstrapFacturaScripts({
     }
   } catch {}
 
+  // Patch Dashboard controller to disable outbound HTTP calls.
+  // Dashboard::privateCore() calls Telemetry::init()->ready() and
+  // Forja::canUpdateCore() which use PHP's real curl extension.  In
+  // Firefox/Safari, Emscripten's networking layer cannot reach
+  // facturascripts.com and crashes with EHOSTUNREACH (errno 23 in
+  // Emscripten — previously misidentified as ENFILE).
+  // Also disable loadNews() which fetches the changelog via Http::get().
+  try {
+    const dashPath = `${FS_ROOT}/Core/Controller/Dashboard.php`;
+    const dashOriginal = decoder.decode(await php.readFile(dashPath));
+    const dashRaw = dashOriginal
+      .replace(
+        "$this->registered = Telemetry::init()->ready();",
+        "$this->registered = false;",
+      )
+      .replace(
+        "$this->updated = Forja::canUpdateCore() === false;",
+        "$this->updated = true;",
+      )
+      .replace(
+        "return Http::get('https://facturascripts.com/comm3/index.php?page=community_changelog&json=TRUE')\n                ->setTimeout(5)\n                ->json() ?? [];",
+        "return [];",
+      );
+    if (dashRaw !== dashOriginal) {
+      await php.writeFile(dashPath, encoder.encode(dashRaw));
+    }
+  } catch {}
+
   publish("Writing config.php.", 0.45);
   await php.writeFile(
     `${FS_ROOT}/config.php`,

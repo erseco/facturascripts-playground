@@ -1,6 +1,6 @@
 # GitHub Action PR Preview
 
-The [`erseco/action-facturascripts-playground-pr-preview`](https://github.com/erseco/action-facturascripts-playground-pr-preview) action automatically posts or updates a sticky comment on a pull request with a live preview link to [FacturaScripts Playground](https://erseco.github.io/facturascripts-playground/).
+The [`erseco/action-facturascripts-playground-pr-preview`](https://github.com/erseco/action-facturascripts-playground-pr-preview) action posts or updates a sticky pull-request comment with a live [FacturaScripts Playground](https://erseco.github.io/facturascripts-playground/) preview.
 
 ## What it does
 
@@ -8,13 +8,10 @@ When added to a PR workflow, the action:
 
 1. Builds a [`blueprint.json`](blueprint-json.md) from the inputs you provide.
 2. Encodes it as base64url and appends it as `?blueprint-data=…` to the playground URL.
-3. Posts (or updates) a sticky comment on the PR with the preview link.
+3. Uses the PR branch ZIP as `plugins[0]` so the proposed plugin or extension is loaded in a real FacturaScripts instance.
+4. Posts or updates a sticky comment on the PR with the preview link.
 
-This lets reviewers open the plugin or extension being proposed in a real FacturaScripts instance directly from the PR — no local setup required.
-
-## When to use it
-
-Use this action in any repository that ships a FacturaScripts plugin or extension. Add it to a workflow that triggers on `pull_request` events so every PR automatically gets a playground preview.
+Use it for repositories that ship a FacturaScripts plugin or extension and want every PR to include a ready-to-open playground preview.
 
 ## Required permissions
 
@@ -50,11 +47,11 @@ jobs:
           zip-url: https://github.com/${{ github.repository }}/archive/refs/heads/${{ github.head_ref }}.zip
 ```
 
-`zip-url` points to the ZIP of the branch under review. The action installs that ZIP as a plugin inside the playground.
+`zip-url` points to the ZIP of the branch under review. The action installs that ZIP as the primary plugin inside the playground.
 
 ## Advanced workflow
 
-The action accepts optional inputs that extend the generated blueprint. All optional inputs map directly to the fields described in the [`blueprint.json` reference](blueprint-json.md).
+The action accepts optional inputs that extend the generated blueprint. Every optional input maps directly to a field described in the [`blueprint.json` reference](blueprint-json.md).
 
 ```yaml
 name: PR Preview

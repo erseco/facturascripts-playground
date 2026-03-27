@@ -16,6 +16,9 @@ El flujo mas seguro para cambios en este repositorio es:
 make deps
 make prepare
 make bundle
+make test
+make test-e2e
+make lint
 make serve
 ```
 
@@ -26,7 +29,18 @@ node --check src/shell/main.js
 node --check sw.js
 node --check php-worker.js
 node --check src/runtime/bootstrap.js
+node --check src/runtime/addons.js
+node --check src/runtime/crash-recovery.js
+node --check src/runtime/manifest.js
+node --check src/runtime/networking.js
+node --check src/runtime/php-compat.js
+node --check src/runtime/php-loader.js
+node --check src/runtime/wizard-script.js
 node --check src/runtime/vfs.js
+node --check src/shared/blueprint.js
+node --check src/shared/config.js
+node --check src/shared/paths.js
+node --check src/shared/storage.js
 ```
 
 ## Bundles y fuente de FacturaScripts
@@ -77,6 +91,14 @@ El workflow de `.github/workflows/pages.yml`:
 5. publica app y docs juntas
 
 El proyecto esta preparado para desplegarse como sitio estatico, tanto en raiz como en subdirectorio.
+
+## Tests
+
+`make test` ejecuta la suite de `node --test` en `tests/*.test.mjs`. Hoy cubre helpers puros de `src/shared/` y `src/runtime/`, mas el generador del wizard.
+
+`make test-e2e` ejecuta Playwright contra una instancia local levantada con `make up`. Estas pruebas cubren el shell, los paneles laterales y la persistencia basica de la UI.
+
+Cuando cambies runtime, routing o almacenamiento, usa esa suite como primer filtro y complementala con verificacion manual en navegador.
 
 ## Cuando debes actualizar docs
 

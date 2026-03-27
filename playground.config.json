@@ -1,5 +1,5 @@
 {
-  "bundleVersion": "2026-build202603262344",
+  "bundleVersion": "2026-build202603271102",
   "defaultBlueprintUrl": "./assets/blueprints/default.blueprint.json",
   "addonProxyPath": "/__addon_proxy__",
   "addonProxyUrl": "https://zip-proxy.erseco.workers.dev/",
