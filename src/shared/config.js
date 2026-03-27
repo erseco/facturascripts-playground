@@ -1,10 +1,11 @@
-const CONFIG_URL = new URL("../../playground.config.json", import.meta.url);
+import { resolveProjectUrl } from "./paths.js";
 
 let configPromise;
 
 export async function loadPlaygroundConfig() {
   if (!configPromise) {
-    configPromise = fetch(CONFIG_URL, { cache: "no-store" }).then(
+    const configUrl = resolveProjectUrl("playground.config.json");
+    configPromise = fetch(configUrl, { cache: "no-store" }).then(
       async (response) => {
         if (!response.ok) {
           throw new Error(
