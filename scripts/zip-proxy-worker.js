@@ -1,8 +1,7 @@
-// Cloudflare Worker used by the public GitHub Pages deployment.
-// We keep this source in-repo because the static site cannot serve /__addon_proxy__,
-// and remote GitHub ZIP downloads are not reliable via direct browser fetches due to CORS.
-// Production uses https://zip-proxy.erseco.workers.dev/ while local development keeps
-// using the same-origin proxy from scripts/dev-server.mjs.
+// Shared Cloudflare Worker for omeka-s-playground and facturascripts-playground.
+// Proxies allowed URLs with CORS headers for PHP WASM networking (tcpOverFetch).
+// Production: https://zip-proxy.erseco.workers.dev/
+// Local development uses the same-origin proxy from scripts/dev-server.mjs.
 
 export default {
   async fetch(request) {
@@ -60,6 +59,16 @@ export default {
       );
     }
 
+    if (!isAllowedUrl(parsedTargetUrl)) {
+      return jsonResponse(
+        {
+          error:
+            "The provided URL is not allowed. Only trusted hosts and ZIP downloads are supported.",
+        },
+        400,
+      );
+    }
+
     try {
       const acceptHeader = isFacturaScriptsPluginPage(parsedTargetUrl)
         ? "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"
@@ -96,7 +105,9 @@ export default {
         headers.get("Content-Type") ||
           (looksLikeZipUrl(parsedTargetUrl)
             ? "application/zip"
-            : "text/html; charset=utf-8"),
+            : isFacturaScriptsPluginPage(parsedTargetUrl)
+              ? "text/html; charset=utf-8"
+              : "application/octet-stream"),
       );
 
       if (
@@ -117,7 +128,7 @@ export default {
     } catch (error) {
       return jsonResponse(
         {
-          error: "Failed to fetch remote plugin resource.",
+          error: "Failed to fetch remote resource.",
           details: error.message,
         },
         502,
@@ -156,28 +167,57 @@ function jsonResponse(data, status) {
   });
 }
 
+/**
+ * Trusted hosts and URL patterns allowed by the proxy.
+ * Combines hosts from omeka-s-playground and facturascripts-playground.
+ */
+function isAllowedUrl(url) {
+  const hostname = url.hostname.toLowerCase();
+  const pathname = url.pathname.toLowerCase();
+
+  // ZIP download patterns (any host).
+  if (pathname.endsWith(".zip")) return true;
+  if (pathname.includes("/zip/")) return true;
+  if (pathname.includes("archive/refs/heads/")) return true;
+  if (pathname.includes("archive/refs/tags/")) return true;
+
+  // GitHub.
+  if (hostname === "github.com") return true;
+  if (hostname === "codeload.github.com") return true;
+  if (hostname === "objects.githubusercontent.com") return true;
+  if (hostname === "raw.githubusercontent.com") return true;
+  if (hostname === "api.github.com") return true;
+
+  // GitLab.
+  if (hostname === "gitlab.com") return true;
+
+  // jsDelivr CDN and API.
+  if (hostname === "cdn.jsdelivr.net") return true;
+  if (hostname === "data.jsdelivr.com") return true;
+
+  // Omeka addon catalog.
+  if (hostname === "omeka.org") return true;
+
+  // FacturaScripts.
+  if (hostname === "facturascripts.com") return true;
+
+  // FacturaScripts plugin page (HTML scraping).
+  if (isFacturaScriptsPluginPage(url)) return true;
+
+  // FacturaScripts build downloads.
+  if (/\/downloadbuild\/\d+\/(stable|beta)$/u.test(pathname)) return true;
+
+  return false;
+}
+
 function looksLikeZipUrl(url) {
   const pathname = url.pathname.toLowerCase();
 
-  if (pathname.endsWith(".zip")) {
-    return true;
-  }
-
-  if (pathname.includes("/zip/")) {
-    return true;
-  }
-
-  if (pathname.includes("archive/refs/heads/")) {
-    return true;
-  }
-
-  if (pathname.includes("archive/refs/tags/")) {
-    return true;
-  }
-
-  if (/\/downloadbuild\/\d+\/(stable|beta)$/u.test(pathname)) {
-    return true;
-  }
+  if (pathname.endsWith(".zip")) return true;
+  if (pathname.includes("/zip/")) return true;
+  if (pathname.includes("archive/refs/heads/")) return true;
+  if (pathname.includes("archive/refs/tags/")) return true;
+  if (/\/downloadbuild\/\d+\/(stable|beta)$/u.test(pathname)) return true;
 
   return false;
 }
