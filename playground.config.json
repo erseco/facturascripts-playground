@@ -1,8 +1,9 @@
 {
-  "bundleVersion": "2026-build202603271102",
+  "bundleVersion": "2026-build202604011706",
   "defaultBlueprintUrl": "./assets/blueprints/default.blueprint.json",
   "addonProxyPath": "/__addon_proxy__",
   "addonProxyUrl": "https://zip-proxy.erseco.workers.dev/",
+  "phpCorsProxyUrl": "https://zip-proxy.erseco.workers.dev/?url=",
   "outboundHttp": {
     "allowedHosts": [
       "github.com",

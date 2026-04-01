@@ -1,5 +1,9 @@
 import { createPhpBridgeChannel, createWorkerRequestId } from "./src/shared/protocol.js";
 
+const INTERNAL_PROXY_PATH = "/__playground_proxy__";
+let addonProxyUrlOverride = null;
+let playgroundConfigPromise;
+
 const bridges = new Map();
 const pending = new Map();
 const clientContexts = new Map();
@@ -67,6 +71,44 @@ function buildErrorResponse(message, status = 500) {
       },
     },
   );
+}
+
+async function loadServiceWorkerConfig() {
+  if (!playgroundConfigPromise) {
+    playgroundConfigPromise = fetch(
+      new URL("playground.config.json", self.registration.scope),
+      { cache: "no-store" },
+    ).then((r) => (r.ok ? r.json() : {}));
+  }
+  return playgroundConfigPromise;
+}
+
+async function handleInternalProxyRequest(request, sourceUrl) {
+  const config = await loadServiceWorkerConfig();
+  const proxyBaseUrl = addonProxyUrlOverride || config.addonProxyUrl || "";
+  if (!proxyBaseUrl) {
+    return buildErrorResponse("No addon proxy configured.", 502);
+  }
+  const upstreamUrl = new URL(proxyBaseUrl);
+  upstreamUrl.search = sourceUrl.search;
+  const init = {
+    method: request.method,
+    headers: new Headers(request.headers),
+    redirect: "follow",
+  };
+  init.headers.delete("host");
+  if (!["GET", "HEAD"].includes(request.method)) {
+    init.body = await request.clone().arrayBuffer();
+  }
+  const resp = await fetch(upstreamUrl.toString(), init);
+  const headers = new Headers(resp.headers);
+  headers.set("cache-control", "no-store");
+  headers.delete("content-length");
+  return new Response(resp.body, {
+    status: resp.status,
+    statusText: resp.statusText,
+    headers,
+  });
 }
 
 async function broadcastToClients(message) {
@@ -344,6 +386,10 @@ function forwardToPhpWorker({ request, runtimeId, scopeId }) {
 }
 
 self.addEventListener("message", (event) => {
+  if (event.data?.kind === "configure-service-worker") {
+    addonProxyUrlOverride = event.data.addonProxyUrl || null;
+    return;
+  }
   if (event.data?.kind === "clear-static-cache") {
     caches.delete(STATIC_ASSET_CACHE).catch(() => {});
   }
@@ -362,6 +408,11 @@ self.addEventListener("fetch", (event) => {
     const url = new URL(event.request.url);
     if (url.origin !== self.location.origin) {
       return fetch(event.request);
+    }
+
+    const strippedPath = stripAppBasePath(url.pathname);
+    if (strippedPath.split("?")[0] === INTERNAL_PROXY_PATH) {
+      return handleInternalProxyRequest(event.request, url);
     }
 
     const scopedRequest = await resolveScopedRequest(event, url);
