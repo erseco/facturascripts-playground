@@ -3,7 +3,11 @@ import {
   PHP,
   setPhpIniEntries,
 } from "@php-wasm/universal";
-import { loadWebRuntime } from "@php-wasm/web";
+import {
+  certificateToPEM,
+  generateCertificate,
+  loadWebRuntime,
+} from "@php-wasm/web";
 import { FS_ROOT } from "./bootstrap.js";
 import { wrapPhpInstance } from "./php-compat.js";
 
@@ -12,45 +16,48 @@ const TEMP_ROOT = "/tmp";
 const CONFIG_ROOT = "/config";
 const DEFAULT_PHP_VERSION = "8.3";
 
-// Block slow outbound PHP calls to facturascripts.com (Forja builds/plugins, telemetry).
-// PHP WASM routes curl/file_get_contents through globalThis.fetch; intercepting here
-// returns empty JSON immediately instead of waiting for the 3–10 s curl timeout.
-if (!globalThis.__playgroundOriginalFetch) {
-  globalThis.__playgroundOriginalFetch = globalThis.fetch.bind(globalThis);
-  const _blockedPrefixes = [
-    "https://facturascripts.com/DownloadBuild",
-    "https://facturascripts.com/PluginInfoList",
-    "https://facturascripts.com/Telemetry",
-  ];
-  globalThis.fetch = function playgroundFetch(input, init) {
-    const url =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.href
-          : (input?.url ?? "");
-    if (_blockedPrefixes.some((p) => url.startsWith(p))) {
-      return Promise.resolve(
-        new Response("[]", {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
-      );
-    }
-    return globalThis.__playgroundOriginalFetch(input, init);
+const TCP_OVER_FETCH_CA_PATH = "/internal/shared/playground-ca.pem";
+let cachedTcpOverFetchCaPromise = null;
+
+async function getTcpOverFetchOptions(corsProxyUrl) {
+  if (!cachedTcpOverFetchCaPromise) {
+    cachedTcpOverFetchCaPromise = generateCertificate({
+      subject: {
+        commonName: "FacturaScripts Playground CA",
+        organizationName: "FacturaScripts Playground",
+        countryName: "ES",
+      },
+      basicConstraints: { ca: true },
+    });
+  }
+  return {
+    CAroot: await cachedTcpOverFetchCaPromise,
+    ...(corsProxyUrl ? { corsProxyUrl } : {}),
   };
 }
 
 export function createPhpRuntime(
   _runtime,
-  { appBaseUrl, phpVersion, webRoot, scopeId, forceCleanBoot } = {},
+  {
+    appBaseUrl,
+    phpVersion,
+    webRoot,
+    scopeId,
+    forceCleanBoot,
+    corsProxyUrl,
+    phpCorsProxyUrl,
+  } = {},
 ) {
   const resolvedPhpVersion = phpVersion || DEFAULT_PHP_VERSION;
   let wrapped = null;
 
   const deferred = {
     async refresh() {
-      const runtimeId = await loadWebRuntime(resolvedPhpVersion);
+      const resolvedCorsProxyUrl = corsProxyUrl ?? phpCorsProxyUrl ?? null;
+      const tcpOverFetch = await getTcpOverFetchOptions(resolvedCorsProxyUrl);
+      const runtimeId = await loadWebRuntime(resolvedPhpVersion, {
+        tcpOverFetch,
+      });
       const php = new PHP(runtimeId);
       const FS = php[__private__dont__use].FS;
 
@@ -66,6 +73,11 @@ export function createPhpRuntime(
       try {
         FS.mkdirTree(CONFIG_ROOT);
       } catch {}
+
+      php.writeFile(
+        TCP_OVER_FETCH_CA_PATH,
+        `${certificateToPEM(tcpOverFetch.CAroot.certificate)}\n`,
+      );
 
       // Replay/start fs-journal persistence for mutable paths.
       if (scopeId) {
@@ -92,6 +104,8 @@ export function createPhpRuntime(
         upload_tmp_dir: "/tmp",
         default_socket_timeout: "1",
         "date.timezone": "UTC",
+        "openssl.cafile": TCP_OVER_FETCH_CA_PATH,
+        "curl.cainfo": TCP_OVER_FETCH_CA_PATH,
         // OPcache tuning — defaults cap at 1000 files and use file_cache_only
         // which reads bytecode from MEMFS on every request.  Switch to the
         // in-memory cache with a higher file limit and no timestamp checks

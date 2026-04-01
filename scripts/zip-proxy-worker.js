@@ -60,23 +60,12 @@ export default {
       );
     }
 
-    if (
-      !looksLikeZipUrl(parsedTargetUrl) &&
-      !isFacturaScriptsPluginPage(parsedTargetUrl)
-    ) {
-      return jsonResponse(
-        {
-          error:
-            "The provided URL is not a supported plugin page or ZIP download.",
-        },
-        400,
-      );
-    }
-
     try {
       const acceptHeader = isFacturaScriptsPluginPage(parsedTargetUrl)
         ? "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"
-        : "application/zip, application/octet-stream;q=0.9, */*;q=0.8";
+        : looksLikeZipUrl(parsedTargetUrl)
+          ? "application/zip, application/octet-stream;q=0.9, */*;q=0.8"
+          : "*/*";
 
       const upstreamResponse = await fetch(parsedTargetUrl.toString(), {
         method: "GET",
@@ -143,7 +132,8 @@ function corsHeaders() {
     "Access-Control-Allow-Methods": "GET, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Accept",
     "Access-Control-Expose-Headers":
-      "Content-Disposition, Content-Type, Content-Length",
+      "Content-Disposition, Content-Type, Content-Length, X-Playground-Cors-Proxy",
+    "X-Playground-Cors-Proxy": "true",
     "Access-Control-Max-Age": "86400",
   };
 }

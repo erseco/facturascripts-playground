@@ -57,8 +57,7 @@ function buildDownloadUrl(sourceUrl, proxyBaseUrl) {
 }
 
 async function fetchBytes(url) {
-  const directFetch =
-    globalThis.__playgroundOriginalFetch || globalThis.fetch.bind(globalThis);
+  const directFetch = globalThis.fetch.bind(globalThis);
   const response = await directFetch(url, { redirect: "follow" });
   if (!response.ok)
     throw new Error(`Failed to fetch ${url}: ${response.status}`);

@@ -56,19 +56,6 @@ if (!file_exists('${PLAYGROUND_DB_PATH}')) {
 $_SERVER['SERVER_PORT'] = 80;
 if (empty($_SERVER['DOCUMENT_ROOT'])) { $_SERVER['DOCUMENT_ROOT'] = '${FS_ROOT}'; }
 if (empty($_SERVER['SCRIPT_FILENAME'])) { $_SERVER['SCRIPT_FILENAME'] = $_SERVER['DOCUMENT_ROOT'] . '/index.php'; }
-
-// Keep Forja remote-API cache files fresh so FacturaScripts never blocks on
-// a curl call to facturascripts.com (10 s timeout). Cache::get() expires at
-// 3600 s, so refresh at 3500 s to always have a valid entry.
-$_pgForjaDir = '${FS_ROOT}/MyFiles/Tmp/FileCache';
-if (!is_dir($_pgForjaDir)) { @mkdir($_pgForjaDir, 0777, true); }
-foreach (['forja_builds', 'forja_plugins'] as $_pgKey) {
-    $_pgFile = $_pgForjaDir . '/' . $_pgKey . '.cache';
-    if (!file_exists($_pgFile) || filemtime($_pgFile) < time() - 3500) {
-        file_put_contents($_pgFile, 'a:0:{}');
-    }
-}
-unset($_pgForjaDir, $_pgKey, $_pgFile);
 `;
 }
 
@@ -283,60 +270,6 @@ export async function bootstrapFacturaScripts({
   for (const dir of mutableDirs) {
     await ensureDir(php, dir);
   }
-
-  // Pre-populate Forja cache so FacturaScripts never triggers slow curl calls
-  // to facturascripts.com. Cache::remember() returns this data immediately.
-  const emptySerializedArray = encoder.encode("a:0:{}");
-  for (const key of ["forja_builds", "forja_plugins"]) {
-    await php.writeFile(
-      `${FS_ROOT}/MyFiles/Tmp/FileCache/${key}.cache`,
-      emptySerializedArray,
-    );
-  }
-
-  // Patch Cache::clear() to preserve Forja cache files. Without this,
-  // enablePluginAction/disablePluginAction call Cache::clear() which deletes
-  // forja_builds.cache and forja_plugins.cache. The next Forja call in the
-  // same request then triggers a 10s curl timeout to facturascripts.com.
-  try {
-    const cachePath = `${FS_ROOT}/Core/Cache.php`;
-    const cacheRaw = decoder.decode(await php.readFile(cachePath));
-    const patched = cacheRaw.replace(
-      "if (str_ends_with($fileName, '.cache')) {",
-      "if (str_ends_with($fileName, '.cache') && !str_starts_with($fileName, 'forja_')) {",
-    );
-    if (patched !== cacheRaw) {
-      await php.writeFile(cachePath, encoder.encode(patched));
-    }
-  } catch {}
-
-  // Patch Dashboard controller to disable outbound HTTP calls.
-  // Dashboard::privateCore() calls Telemetry::init()->ready() and
-  // Forja::canUpdateCore() which use PHP's real curl extension.  In
-  // Firefox/Safari, Emscripten's networking layer cannot reach
-  // facturascripts.com and crashes with EHOSTUNREACH (errno 23 in
-  // Emscripten — previously misidentified as ENFILE).
-  // Also disable loadNews() which fetches the changelog via Http::get().
-  try {
-    const dashPath = `${FS_ROOT}/Core/Controller/Dashboard.php`;
-    const dashOriginal = decoder.decode(await php.readFile(dashPath));
-    const dashRaw = dashOriginal
-      .replace(
-        "$this->registered = Telemetry::init()->ready();",
-        "$this->registered = false;",
-      )
-      .replace(
-        "$this->updated = Forja::canUpdateCore() === false;",
-        "$this->updated = true;",
-      )
-      .replace(
-        "return Http::get('https://facturascripts.com/comm3/index.php?page=community_changelog&json=TRUE')\n                ->setTimeout(5)\n                ->json() ?? [];",
-        "return [];",
-      );
-    if (dashRaw !== dashOriginal) {
-      await php.writeFile(dashPath, encoder.encode(dashRaw));
-    }
-  } catch {}
 
   publish("Writing config.php.", 0.45);
   await php.writeFile(

@@ -126,6 +126,7 @@ async function getRuntimeState() {
       phpVersion: runtime.phpVersion || runtime.phpVersionLabel,
       scopeId,
       forceCleanBoot,
+      phpCorsProxyUrl: config.phpCorsProxyUrl || null,
     });
 
     postShell({
