@@ -75,18 +75,36 @@ describe("shared path helpers", () => {
   });
 
   it("detects blueprint overrides in the query string", () => {
+    // ?blueprint= (inline base64/JSON or URL for backward compat)
+    assert.equal(
+      hasBlueprintUrlOverride(
+        new URL("https://example.com/?blueprint=eyJmb28iOiJiYXIifQ"),
+      ),
+      true,
+    );
     assert.equal(
       hasBlueprintUrlOverride(
         new URL("https://example.com/?blueprint=https%3A%2F%2Fexample.com%2Fa"),
       ),
       true,
     );
+    // ?blueprint-url= (remote URL — explicit)
+    assert.equal(
+      hasBlueprintUrlOverride(
+        new URL(
+          "https://example.com/?blueprint-url=https%3A%2F%2Fexample.com%2Fb.json",
+        ),
+      ),
+      true,
+    );
+    // ?blueprint-data= (legacy alias)
     assert.equal(
       hasBlueprintUrlOverride(
         new URL("https://example.com/?blueprint-data=eyJmb28iOiJiYXIifQ"),
       ),
       true,
     );
+    // bare URL — no override
     assert.equal(
       hasBlueprintUrlOverride(new URL("https://example.com/")),
       false,
