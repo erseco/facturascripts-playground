@@ -58,7 +58,18 @@ function buildDownloadUrl(sourceUrl, proxyBaseUrl) {
 
 async function fetchBytes(url) {
   const directFetch = globalThis.fetch.bind(globalThis);
-  const response = await directFetch(url, { redirect: "follow" });
+  let response = await directFetch(url, {
+    redirect: "follow",
+    cache: "no-store",
+  });
+  // Retry once on transient CDN/proxy errors
+  if (!response.ok && (response.status === 502 || response.status === 503)) {
+    await new Promise((r) => setTimeout(r, 1000));
+    response = await directFetch(url, {
+      redirect: "follow",
+      cache: "no-store",
+    });
+  }
   if (!response.ok)
     throw new Error(`Failed to fetch ${url}: ${response.status}`);
   return new Uint8Array(await response.arrayBuffer());
