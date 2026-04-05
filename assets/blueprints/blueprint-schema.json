@@ -95,12 +95,13 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["codcliente"],
             "properties": {
               "codcliente": { "type": "string" },
               "nombre": { "type": "string" },
               "razonsocial": { "type": "string" },
               "cifnif": { "type": "string" },
+              "tipoidfiscal": { "type": "string" },
+              "regimeniva": { "type": "string" },
               "email": { "type": "string" },
               "telefono1": { "type": "string" },
               "telefono2": { "type": "string" },
@@ -111,7 +112,8 @@
               "provincia": { "type": "string" },
               "codpais": { "type": "string" },
               "observaciones": { "type": "string" },
-              "web": { "type": "string" }
+              "web": { "type": "string" },
+              "_unique": { "type": "string", "description": "Field name to use as unique key instead of codcliente." }
             },
             "additionalProperties": true
           }
@@ -120,12 +122,13 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["codproveedor"],
             "properties": {
               "codproveedor": { "type": "string" },
               "nombre": { "type": "string" },
               "razonsocial": { "type": "string" },
               "cifnif": { "type": "string" },
+              "tipoidfiscal": { "type": "string" },
+              "regimeniva": { "type": "string" },
               "email": { "type": "string" },
               "telefono1": { "type": "string" },
               "telefono2": { "type": "string" },
@@ -136,7 +139,8 @@
               "provincia": { "type": "string" },
               "codpais": { "type": "string" },
               "observaciones": { "type": "string" },
-              "web": { "type": "string" }
+              "web": { "type": "string" },
+              "_unique": { "type": "string", "description": "Field name to use as unique key instead of codproveedor." }
             },
             "additionalProperties": true
           }

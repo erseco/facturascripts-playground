@@ -104,6 +104,85 @@ describe("buildDefaultBlueprint with install", () => {
   });
 });
 
+describe("normalizeBlueprint seed with _unique", () => {
+  it("accepts suppliers with _unique instead of codproveedor", () => {
+    const result = normalizeBlueprint(
+      {
+        seed: {
+          suppliers: [
+            { nombre: "Acme", cifnif: "B12345678", _unique: "cifnif" },
+            { nombre: "Beta", cifnif: "B87654321", _unique: "cifnif" },
+          ],
+        },
+      },
+      baseConfig,
+    );
+    assert.equal(result.seed.suppliers.length, 2);
+    assert.equal(result.seed.suppliers[0].cifnif, "B12345678");
+    assert.equal(result.seed.suppliers[0]._unique, "cifnif");
+  });
+
+  it("accepts customers with _unique instead of codcliente", () => {
+    const result = normalizeBlueprint(
+      {
+        seed: {
+          customers: [
+            { nombre: "Client A", cifnif: "A11111111", _unique: "cifnif" },
+          ],
+        },
+      },
+      baseConfig,
+    );
+    assert.equal(result.seed.customers.length, 1);
+    assert.equal(result.seed.customers[0]._unique, "cifnif");
+  });
+
+  it("still works with the traditional primaryKey", () => {
+    const result = normalizeBlueprint(
+      {
+        seed: {
+          suppliers: [{ codproveedor: "PROV1", nombre: "Classic" }],
+        },
+      },
+      baseConfig,
+    );
+    assert.equal(result.seed.suppliers[0].codproveedor, "PROV1");
+  });
+
+  it("rejects duplicate _unique values", () => {
+    assert.throws(
+      () =>
+        normalizeBlueprint(
+          {
+            seed: {
+              suppliers: [
+                { nombre: "A", cifnif: "B12345678", _unique: "cifnif" },
+                { nombre: "B", cifnif: "B12345678", _unique: "cifnif" },
+              ],
+            },
+          },
+          baseConfig,
+        ),
+      /duplicate/i,
+    );
+  });
+
+  it("throws when _unique field value is empty", () => {
+    assert.throws(
+      () =>
+        normalizeBlueprint(
+          {
+            seed: {
+              suppliers: [{ nombre: "A", cifnif: "", _unique: "cifnif" }],
+            },
+          },
+          baseConfig,
+        ),
+      /requires "cifnif"/,
+    );
+  });
+});
+
 describe("buildEffectivePlaygroundConfig with install", () => {
   it("includes install in effective config", () => {
     const blueprint = normalizeBlueprint(
