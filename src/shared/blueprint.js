@@ -211,16 +211,22 @@ function normalizeSeedCollection(input, primaryKey) {
     }
 
     const normalized = structuredClone(entry);
-    const key = String(normalized[primaryKey] || "").trim();
+    const uniqueField =
+      typeof normalized._unique === "string" && normalized._unique.trim()
+        ? normalized._unique.trim()
+        : primaryKey;
+    const key = String(normalized[uniqueField] || "").trim();
     if (!key) {
-      throw new Error(`Blueprint seed entry requires "${primaryKey}".`);
+      throw new Error(`Blueprint seed entry requires "${uniqueField}".`);
     }
 
-    normalized[primaryKey] = key;
-    const dedupeKey = key.toLowerCase();
+    if (uniqueField === primaryKey) {
+      normalized[primaryKey] = key;
+    }
+    const dedupeKey = `${uniqueField}:${key.toLowerCase()}`;
     if (seen.has(dedupeKey)) {
       throw new Error(
-        `Blueprint seed cannot include duplicate ${primaryKey} "${key}".`,
+        `Blueprint seed cannot include duplicate ${uniqueField} "${key}".`,
       );
     }
     seen.add(dedupeKey);

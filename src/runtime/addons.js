@@ -199,20 +199,22 @@ function apply_fields($model, array $data, array $allowed): void {
     }
 }
 function upsert_cliente(array $data): string {
-    $code = trim((string)($data['codcliente'] ?? ''));
-    if ($code === '') throw new RuntimeException('Seed customer entry requires codcliente.');
-    $model = Cliente::findWhereEq('codcliente', $code) ?? new Cliente();
+    $uniqueField = isset($data['_unique']) && trim($data['_unique']) !== '' ? trim($data['_unique']) : 'codcliente';
+    $code = trim((string)($data[$uniqueField] ?? ''));
+    if ($code === '') throw new RuntimeException('Seed customer entry requires ' . $uniqueField . '.');
+    $model = Cliente::findWhereEq($uniqueField, $code) ?? new Cliente();
     $mode = $model->primaryColumnValue() ? 'updated' : 'created';
-    apply_fields($model, $data, ['codcliente', 'nombre', 'razonsocial', 'cifnif', 'email', 'telefono1', 'telefono2', 'direccion', 'apartado', 'codpostal', 'ciudad', 'provincia', 'codpais', 'observaciones', 'web']);
+    apply_fields($model, $data, ['codcliente', 'nombre', 'razonsocial', 'cifnif', 'tipoidfiscal', 'regimeniva', 'email', 'telefono1', 'telefono2', 'direccion', 'apartado', 'codpostal', 'ciudad', 'provincia', 'codpais', 'observaciones', 'web']);
     if (!$model->save()) throw new RuntimeException('Failed to save customer ' . $code . '.');
     return $mode;
 }
 function upsert_proveedor(array $data): string {
-    $code = trim((string)($data['codproveedor'] ?? ''));
-    if ($code === '') throw new RuntimeException('Seed supplier entry requires codproveedor.');
-    $model = Proveedor::findWhereEq('codproveedor', $code) ?? new Proveedor();
+    $uniqueField = isset($data['_unique']) && trim($data['_unique']) !== '' ? trim($data['_unique']) : 'codproveedor';
+    $code = trim((string)($data[$uniqueField] ?? ''));
+    if ($code === '') throw new RuntimeException('Seed supplier entry requires ' . $uniqueField . '.');
+    $model = Proveedor::findWhereEq($uniqueField, $code) ?? new Proveedor();
     $mode = $model->primaryColumnValue() ? 'updated' : 'created';
-    apply_fields($model, $data, ['codproveedor', 'nombre', 'razonsocial', 'cifnif', 'email', 'telefono1', 'telefono2', 'direccion', 'apartado', 'codpostal', 'ciudad', 'provincia', 'codpais', 'observaciones', 'web']);
+    apply_fields($model, $data, ['codproveedor', 'nombre', 'razonsocial', 'cifnif', 'tipoidfiscal', 'regimeniva', 'email', 'telefono1', 'telefono2', 'direccion', 'apartado', 'codpostal', 'ciudad', 'provincia', 'codpais', 'observaciones', 'web']);
     if (!$model->save()) throw new RuntimeException('Failed to save supplier ' . $code . '.');
     return $mode;
 }
