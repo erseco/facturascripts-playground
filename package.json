@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@php-wasm/universal": "^3.1.30",
-    "@php-wasm/web": "^3.1.30",
+    "@php-wasm/web": "^3.1.33",
     "fflate": "^0.8.2"
   },
   "devDependencies": {
