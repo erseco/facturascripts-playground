@@ -39,5 +39,6 @@
     "costpricepolicy": "",
     "ventasinstock": false,
     "updatesupplierprices": true
-  }
+  },
+  "settings": {}
 }

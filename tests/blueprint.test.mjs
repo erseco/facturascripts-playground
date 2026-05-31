@@ -194,3 +194,63 @@ describe("buildEffectivePlaygroundConfig with install", () => {
     assert.equal(effective.install.codpais, "DEU");
   });
 });
+
+describe("normalizeBlueprint settings", () => {
+  it("defaults to an empty object", () => {
+    const result = normalizeBlueprint({}, baseConfig);
+    assert.deepEqual(result.settings, {});
+  });
+
+  it("preserves grouped key/value pairs", () => {
+    const result = normalizeBlueprint(
+      {
+        settings: {
+          email: { email: "demo@example.com", host: "smtp.example.com" },
+        },
+      },
+      baseConfig,
+    );
+    assert.deepEqual(result.settings, {
+      email: { email: "demo@example.com", host: "smtp.example.com" },
+    });
+  });
+
+  it("coerces scalar values to strings and booleans to 1/0", () => {
+    const result = normalizeBlueprint(
+      { settings: { email: { port: 587, lowsecure: true, off: false } } },
+      baseConfig,
+    );
+    assert.deepEqual(result.settings.email, {
+      port: "587",
+      lowsecure: "1",
+      off: "0",
+    });
+  });
+
+  it("drops non-object groups, nested objects, arrays and null values", () => {
+    const result = normalizeBlueprint(
+      {
+        settings: {
+          email: { email: "demo@example.com", nested: { a: 1 }, skip: null },
+          bad: "not-an-object",
+          arr: [1, 2],
+        },
+      },
+      baseConfig,
+    );
+    assert.deepEqual(result.settings, {
+      email: { email: "demo@example.com" },
+    });
+  });
+
+  it("ignores a non-object settings value", () => {
+    assert.deepEqual(
+      normalizeBlueprint({ settings: "nope" }, baseConfig).settings,
+      {},
+    );
+    assert.deepEqual(
+      normalizeBlueprint({ settings: [1, 2] }, baseConfig).settings,
+      {},
+    );
+  });
+});

@@ -28,6 +28,7 @@ Actualmente el runtime usa el blueprint para:
 - instalar y activar plugins declarados en `plugins`
 - sembrar clientes, proveedores y productos declarados en `seed`
 - inicializar datos base (impuestos, formas de pago, empresa, almacen, plan contable) segun `install`
+- aplicar ajustes de FacturaScripts declarados en `settings` (por ejemplo, email/SMTP)
 
 ## Estructura soportada
 
@@ -42,6 +43,7 @@ Actualmente el runtime usa el blueprint para:
 | `plugins` | Declaracion de plugins | Cada entrada puede ser nombre de plugin o URL a ZIP |
 | `seed` | Datos demo idempotentes | MVP: `customers`, `suppliers`, `products` |
 | `install` | Datos base de inicializacion | Empresa, impuestos, plan contable, etc. |
+| `settings` | Ajustes de FacturaScripts | `{ grupo: { clave: valor } }` aplicados con `Tools::settingsSet` |
 
 ## Ejemplo valido
 
@@ -341,6 +343,34 @@ El playground ejecuta automaticamente esta inicializacion durante el arranque, d
 7. Carga todos los modelos dinamicos para crear tablas restantes
 8. Ejecuta deploy final de plugins
 9. Configura homepage del usuario a Dashboard
+
+## Seccion `settings`
+
+La seccion `settings` permite preconfigurar ajustes de FacturaScripts (la tabla `settings`) sin tener que entrar a mano en el panel. Es util para demos de plugins que dependen de configuracion, por ejemplo el email/SMTP.
+
+La estructura es `{ grupo: { clave: valor } }`. Cada par se aplica con `Tools::settingsSet(grupo, clave, valor)` y al final se guarda con `Tools::settingsSave()`. Los valores se normalizan a string (los booleanos pasan a `"1"`/`"0"`); los grupos que no sean objetos, los valores anidados, los arrays y los `null` se ignoran.
+
+Se aplica durante la materializacion del blueprint, despues de instalar plugins y de sembrar datos, y es idempotente: si editas `settings` en el blueprint, se vuelve a aplicar.
+
+### Ejemplo: email/SMTP
+
+```json
+{
+  "settings": {
+    "email": {
+      "email": "demo@example.com",
+      "host": "smtp.example.com",
+      "port": "587",
+      "user": "demo@example.com",
+      "password": "demo",
+      "mailer": "smtp",
+      "enc": "tls"
+    }
+  }
+}
+```
+
+Con esto, el formulario de envio de correo de FacturaScripts ya muestra un buzon en "Desde" y deja de avisar de que el email no esta configurado. Las claves disponibles son las mismas que usa la pantalla **Administracion > Email** (`/ConfigEmail`).
 
 ## Limitaciones del MVP
 
