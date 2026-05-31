@@ -192,7 +192,14 @@
       }
     },
     "settings": {
-      "type": "object"
+      "type": "object",
+      "description": "FacturaScripts settings to apply, grouped by settings group. Each group is an object of key/value pairs applied via Tools::settingsSet(group, key, value). Example: {\"email\": {\"email\": \"demo@example.com\", \"host\": \"smtp.example.com\"}}.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": ["string", "number", "boolean"]
+        }
+      }
     }
   }
 }

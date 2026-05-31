@@ -94,3 +94,21 @@ Normal WASM overhead for a complex PHP framework. Each request compiles Twig tem
 
 #### Real curl still makes network calls
 Unlike the legacy PHP curl shim that intercepted ALL calls, the real curl extension in @php-wasm/web goes through Emscripten's networking layer. The JS `globalThis.fetch` blocker does NOT intercept these. We rely on pre-populating the Forja/Telemetry cache files so the HTTP callbacks are never called.
+
+---
+
+## Blueprint `settings` support
+
+**Date:** 2026-05-31
+**Context:** `blueprint-schema.json` declared a `settings` object but the runtime never applied it, so blueprints could not pre-configure FacturaScripts settings (e.g. email/SMTP for plugins like ScheduledMail). See issue #49.
+
+### What changed
+
+- `normalizeBlueprint()` now returns a sanitized `settings` object (`{ group: { key: value } }`): non-object groups, nested objects, arrays and null values are dropped; scalars are coerced to strings and booleans to `"1"`/`"0"`.
+- `materializeBlueprintAddons()` applies `settings` after plugins and seed via a small PHP script (same payload-file pattern as the seed script) that calls `Tools::settingsSet(group, key, value)` + `Tools::settingsSave()`. The `settings` object is part of the materialization fingerprint, so edits re-apply.
+
+### Why a PHP script and not the wizard
+
+Settings are a per-blueprint concern (like `seed`), so they live in `addons.js` materialization (re-applied when the blueprint changes) rather than the one-shot install wizard.
+
+**Files:** `src/shared/blueprint.js`, `src/runtime/addons.js`, `assets/blueprints/blueprint-schema.json`, `assets/blueprints/default.blueprint.json`, `docs/blueprint-json.md`, `tests/blueprint.test.mjs`

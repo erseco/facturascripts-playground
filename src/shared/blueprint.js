@@ -284,6 +284,43 @@ function normalizeSeed(input) {
   };
 }
 
+// Settings are { group: { key: value } } pairs applied via Tools::settingsSet.
+// Drop non-object groups and coerce scalar values to strings (FacturaScripts
+// stores settings as strings); booleans become "1"/"0".
+function normalizeSettings(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return {};
+  }
+
+  const result = {};
+  for (const group of Object.keys(input)) {
+    const groupValue = input[group];
+    if (
+      !groupValue ||
+      typeof groupValue !== "object" ||
+      Array.isArray(groupValue)
+    ) {
+      continue;
+    }
+
+    const normalizedGroup = {};
+    for (const key of Object.keys(groupValue)) {
+      const value = groupValue[key];
+      if (value === null || value === undefined || typeof value === "object") {
+        continue;
+      }
+      normalizedGroup[key] =
+        typeof value === "boolean" ? (value ? "1" : "0") : String(value);
+    }
+
+    if (Object.keys(normalizedGroup).length > 0) {
+      result[group] = normalizedGroup;
+    }
+  }
+
+  return result;
+}
+
 export function getBlueprintSchemaUrl() {
   return new URL(
     "../../assets/blueprints/blueprint-schema.json",
@@ -319,6 +356,7 @@ export function buildDefaultBlueprint(config) {
       products: [],
     },
     install: normalizeInstall(undefined),
+    settings: {},
   };
 }
 
@@ -359,6 +397,7 @@ export function normalizeBlueprint(input, config) {
     plugins: normalizePluginCollection(blueprint.plugins),
     seed: normalizeSeed(blueprint.seed),
     install: normalizeInstall(blueprint.install),
+    settings: normalizeSettings(blueprint.settings),
   };
 }
 

@@ -98,6 +98,7 @@ function buildBlueprintMaterializationState({
   blueprintHash,
   pluginResults,
   seedSummary,
+  settingsSummary,
 }) {
   return {
     manifestVersion,
@@ -105,6 +106,7 @@ function buildBlueprintMaterializationState({
     materializedAt: new Date().toISOString(),
     plugins: pluginResults,
     seed: seedSummary,
+    settings: settingsSummary,
   };
 }
 
@@ -114,6 +116,10 @@ function buildSeedPayload(blueprint) {
     suppliers: blueprint.seed?.suppliers || [],
     products: blueprint.seed?.products || [],
   };
+}
+
+function buildSettingsPayload(blueprint) {
+  return { settings: blueprint.settings || {} };
 }
 
 function buildPluginScript({ fsRoot, payloadPath }) {
@@ -232,6 +238,39 @@ $result = ['ok' => true, 'customers' => ['created' => 0, 'updated' => 0], 'suppl
 foreach ($payload['customers'] ?? [] as $entry) { $mode = upsert_cliente($entry); $result['customers'][$mode]++; }
 foreach ($payload['suppliers'] ?? [] as $entry) { $mode = upsert_proveedor($entry); $result['suppliers'][$mode]++; }
 foreach ($payload['products'] ?? [] as $entry) { $mode = upsert_producto($entry); $result['products'][$mode]++; }
+
+header('Content-Type: application/json');
+echo json_encode($result);
+`;
+}
+
+function buildSettingsScript({ fsRoot, payloadPath }) {
+  return `<?php
+error_reporting(E_ALL);
+ini_set('display_errors', '1');
+define('FS_FOLDER', '${fsRoot}');
+require_once FS_FOLDER . '/config.php';
+require_once FS_FOLDER . '/vendor/autoload.php';
+use FacturaScripts\\Core\\Tools;
+use FacturaScripts\\Core\\Base\\DataBase;
+
+$db = new DataBase();
+$db->connect();
+$payload = json_decode(file_get_contents('${payloadPath}'), true);
+if (!is_array($payload)) throw new RuntimeException('Invalid blueprint settings payload.');
+
+$result = ['ok' => true, 'groups' => 0, 'keys' => 0];
+foreach ($payload['settings'] ?? [] as $group => $values) {
+    if (!is_array($values)) continue;
+    $applied = 0;
+    foreach ($values as $key => $value) {
+        if (is_array($value)) continue;
+        Tools::settingsSet((string)$group, (string)$key, $value);
+        $applied++;
+    }
+    if ($applied > 0) { $result['groups']++; $result['keys'] += $applied; }
+}
+Tools::settingsSave();
 
 header('Content-Type: application/json');
 echo json_encode($result);
@@ -364,6 +403,29 @@ async function applySeedData({ php, fsRoot, publish, blueprint }) {
   return result;
 }
 
+async function applySettings({ php, fsRoot, publish, blueprint }) {
+  const settingsPayload = buildSettingsPayload(blueprint);
+  if (Object.keys(settingsPayload.settings).length === 0) return null;
+
+  publish("Applying blueprint settings.", 0.86);
+  await php.writeFile(
+    BLUEPRINT_PAYLOAD_PATH,
+    encoder.encode(JSON.stringify(settingsPayload, null, 2)),
+  );
+  const text = await runPhpScript({
+    php,
+    scriptPath: `${fsRoot}/_playground_blueprint_settings.php`,
+    scriptContents: buildSettingsScript({
+      fsRoot,
+      payloadPath: BLUEPRINT_PAYLOAD_PATH,
+    }),
+  });
+  const result = JSON.parse(text);
+  if (!result?.ok)
+    throw new Error(`Blueprint settings execution failed: ${text}`);
+  return result;
+}
+
 export async function materializeBlueprintAddons({
   php,
   blueprint,
@@ -375,6 +437,7 @@ export async function materializeBlueprintAddons({
   const blueprintFingerprint = JSON.stringify({
     plugins: blueprint.plugins || [],
     seed: buildSeedPayload(blueprint),
+    settings: buildSettingsPayload(blueprint).settings,
   });
   const blueprintHash = await sha256Text(blueprintFingerprint);
 
@@ -389,7 +452,7 @@ export async function materializeBlueprintAddons({
     existingState?.blueprintHash === blueprintHash
   ) {
     publish(
-      "Blueprint plugins and demo seed already match persisted state.",
+      "Blueprint plugins, demo seed and settings already match persisted state.",
       0.74,
     );
     return existingState;
@@ -403,12 +466,19 @@ export async function materializeBlueprintAddons({
     proxyBaseUrl: resolveProxyUrl(config),
   });
   const seedSummary = await applySeedData({ php, fsRoot, publish, blueprint });
+  const settingsSummary = await applySettings({
+    php,
+    fsRoot,
+    publish,
+    blueprint,
+  });
 
   const nextState = buildBlueprintMaterializationState({
     manifestVersion,
     blueprintHash,
     pluginResults,
     seedSummary,
+    settingsSummary,
   });
   await php.writeFile(
     BLUEPRINT_STATE_PATH,
