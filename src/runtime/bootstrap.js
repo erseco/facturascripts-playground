@@ -10,10 +10,12 @@ import {
   PLAYGROUND_PREPEND_PATH,
 } from "./bootstrap-paths.js";
 import { buildManifestState, fetchManifest } from "./manifest.js";
+import { buildPhpPrepend } from "./php-prepend.js";
 import { mountReadonlyCore } from "./vfs.js";
 import { buildWizardScript } from "./wizard-script.js";
 
 export {
+  buildPhpPrepend,
   buildWizardScript,
   FS_ROOT,
   PLAYGROUND_CONFIG_PATH,
@@ -43,19 +45,6 @@ define('FS_LANG', '${config.locale || "es_ES"}');
 define('FS_DEBUG', false);
 define('FS_DISABLE_ADD_PLUGINS', false);
 define('FS_DISABLE_RM_PLUGINS', false);
-`;
-}
-
-function buildPhpPrepend() {
-  return `<?php
-if (!file_exists('${PLAYGROUND_DB_PATH}')) {
-    $dir = dirname('${PLAYGROUND_DB_PATH}');
-    if (!is_dir($dir)) { mkdir($dir, 0777, true); }
-    touch('${PLAYGROUND_DB_PATH}');
-}
-$_SERVER['SERVER_PORT'] = 80;
-if (empty($_SERVER['DOCUMENT_ROOT'])) { $_SERVER['DOCUMENT_ROOT'] = '${FS_ROOT}'; }
-if (empty($_SERVER['SCRIPT_FILENAME'])) { $_SERVER['SCRIPT_FILENAME'] = $_SERVER['DOCUMENT_ROOT'] . '/index.php'; }
 `;
 }
 

@@ -112,3 +112,20 @@ Unlike the legacy PHP curl shim that intercepted ALL calls, the real curl extens
 Settings are a per-blueprint concern (like `seed`), so they live in `addons.js` materialization (re-applied when the blueprint changes) rather than the one-shot install wizard.
 
 **Files:** `src/shared/blueprint.js`, `src/runtime/addons.js`, `assets/blueprints/blueprint-schema.json`, `assets/blueprints/default.blueprint.json`, `docs/blueprint-json.md`, `tests/blueprint.test.mjs`
+
+---
+
+## Forja cache prepend regression (Dashboard crash)
+
+**Date:** 2026-06-03
+**Context:** Dashboard crashed on first load with `Uncaught TypeError: Cannot access offset of type string on string in Core/Internal/Forja.php:72` (via `Forja::getBuilds()` ← `Forja::canUpdateCore()`).
+
+### Root cause
+
+The "Forja HTTP timeouts" fix above documents pre-populating the Forja cache **both** at bootstrap **and** via the PHP prepend on every request. The prepend half was never actually present in `buildPhpPrepend()`. With outbound networking now real (tcpOverFetch + CORS proxy), `Forja::builds()` reached `facturascripts.com/DownloadBuild` through the proxy and `json()` decoded a value that was not the expected array-of-projects, so `$project['project']` was applied to a string and PHP fatally errored. Because the cache also expires after 3600s and is wiped by `Cache::clear()`, a bootstrap-only seed is not enough.
+
+### Fix
+
+`buildPhpPrepend()` now re-seeds `forja_builds.cache` and `forja_plugins.cache` with `serialize([])` (`a:0:{}`) in `MyFiles/Tmp/FileCache` before every request. `Cache::get()` returns `[]` immediately, so `Forja::builds()` never calls curl, `canUpdateCore()` stays `false`, and there is no malformed response to crash on. Running in the prepend means it survives `Cache::clear()` and the 3600s expiry. The playground cannot update its readonly core anyway, so an empty builds/plugin list is the correct offline behaviour.
+
+**Files:** `src/runtime/bootstrap.js`, `tests/bootstrap-prepend.test.mjs`
