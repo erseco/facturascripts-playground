@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildPhpPrepend, FS_ROOT } from "../src/runtime/bootstrap.js";
+import { FS_ROOT } from "../src/runtime/bootstrap-paths.js";
+import { buildPhpPrepend } from "../src/runtime/php-prepend.js";
 
 describe("buildPhpPrepend", () => {
   it("generates a PHP script starting with <?php", () => {
