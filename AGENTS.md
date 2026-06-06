@@ -1,394 +1,367 @@
-# AGENTS.md — FacturaScripts Playground debugging & dev guide
+<!--
+MAINTENANCE: Update this file when:
+- Adding/removing npm scripts in package.json or targets in Makefile
+- Changing the runtime flow (shell, remote host, service worker, php worker)
+- Modifying the FacturaScripts bundle format, manifest schema, or storage model
+- Changing deployment assumptions for static hosting
+- Changing playground.config.json or blueprint semantics
+-->
 
-This is a debugging/dev guide for AI agents and humans working on the
-**FacturaScripts Playground**: a full FacturaScripts instance running entirely in
-the browser on PHP-WASM. It is one of four sibling PHP-WASM playgrounds
-(nextcloud, moodle, omeka, facturascripts) that share the same architecture.
+# AGENTS.md
 
-> Companion doc: `CHANGELOG-TECHNICAL.md` records past investigations and
-> non-obvious decisions (why Intl is disabled, why the prepend lives at
-> `/internal/shared/auto_prepend_file.php`, why `Plugins::deploy(true, true)`,
-> Forja cache patch, etc.). Read it before touching boot or plugin behavior.
+This file provides guidance to AI coding agents when working with this repository.
 
-> **Remote note:** this repo's git remote is `erseco` (the user's fork at
-> `git@github.com:erseco/facturascripts-playground.git`), not `ateeducacion`.
+**IMPORTANT:** Before making changes, read `CHANGELOG-TECHNICAL.md` — it documents
+past investigations, decisions, and known limitations. This avoids re-investigating
+solved problems and explains why certain non-obvious choices were made (e.g., why
+Intl is disabled, why the prepend path is at `/internal/shared/auto_prepend_file.php`,
+why `Plugins::deploy(true, true)` is used instead of `deploy()`).
 
----
+## Project overview
 
-## Overview / Architecture
+FacturaScripts Playground runs a full FacturaScripts instance entirely in the browser using WebAssembly.
 
-The playground is a static site. There is no backend — everything runs in the
-browser tab via WebAssembly.
+Main layers:
 
-Layers:
+1. Shell UI: `index.html` and `src/shell/main.js`
+2. Runtime host: `remote.html` and `src/remote/main.js`
+3. Request routing: `sw.js` and `php-worker.js`
+4. FacturaScripts runtime boot: `src/runtime/*`
+5. Local dev server: `scripts/dev-server.mjs`
 
-1. **Shell** — `index.html` + `src/shell/main.js`: toolbar, address bar, the
-   `#site-frame` iframe, blueprint import/export, settings, reset.
-2. **Runtime host** — `remote.html` + `src/remote/main.js`: registers the
-   service worker and hosts the nested scoped iframe (`#remote-frame`) with a
-   boot progress overlay.
-3. **Request routing** — `sw.js` (service worker) + `php-worker.js` (the worker
-   that owns the PHP instance for a scope).
-4. **Runtime boot** — `src/runtime/*`: PHP loader, bootstrap/provisioning,
-   FS persistence, crash recovery, plugin install, networking, VFS mount.
-5. **Shared** — `src/shared/*`: config, blueprint, paths, protocol (channel
-   names / request IDs), storage (sessionStorage helpers).
-6. **App loader** — `lib/facturascripts-loader.js`: manifest fetch + bundle ZIP
-   download with Cache API caching and SHA-256 verification.
-7. **Dev server** — `scripts/dev-server.mjs`.
+At runtime, the readonly FacturaScripts core is loaded from a prebuilt bundle and mutable state is kept in browser persistence.
 
-Provisioning is **blueprint-driven** (`assets/blueprints/*`,
-`src/shared/blueprint.js`, `src/runtime/addons.js`). The readonly FacturaScripts
-core is mounted in MEMFS under `/www/facturascripts`; mutable state lives under
-`/persist` (journaled to IndexedDB).
+## Build system
 
-The worker (`php-worker.js`) is **esbuild-bundled** to
-`dist/php-worker.bundle.js` (~3.3 MB). Lint is **Biome**. `@php-wasm/*` is pinned
-at `^3.1.36` (`@php-wasm/web`, `@php-wasm/universal`, `@php-wasm/fs-journal`).
+Requirements:
 
-Request flow:
+- Node.js 18+
+- npm
+- Composer
+- Git
+
+Common commands:
+
+```bash
+npm install
+npm run sync-browser-deps
+npm run prepare-runtime
+npm run bundle
+npm run test:e2e
+make up
+make deps
+make prepare
+make bundle
+make serve
+make test-e2e
+make lint
+make format
+make test
+make clean
+make reset
+```
+
+Important scripts:
+
+- `npm run sync-browser-deps`: vendors browser runtime dependencies
+- `npm run prepare-runtime`: prepares runtime assets
+- `npm run bundle`: builds the readonly FacturaScripts bundle
+- `npm run test:e2e`: runs the Playwright browser suite
+
+Generated assets:
+
+- `assets/facturascripts/`: readonly runtime bundle files
+- `assets/manifests/`: generated manifest files
+
+Do not hand-edit generated bundle artifacts unless the task is specifically about build output.
+
+## Runtime flow
 
 ```text
-index.html → src/shell/main.js → remote.html → src/remote/main.js
-  → sw.js → php-worker.js → src/runtime/bootstrap.js + php-loader.js
-  → @php-wasm/web
+index.html
+  -> src/shell/main.js
+     -> remote.html
+        -> src/remote/main.js
+           -> sw.js
+              -> php-worker.js
+                 -> src/runtime/bootstrap.js
+                 -> src/runtime/vfs.js
+                 -> @php-wasm/web (via php-loader.js + php-compat.js)
 ```
 
----
+Responsibilities:
 
-## Running locally
+- `index.html` / `src/shell/main.js`
+  - toolbar, iframe host, blueprint import/export, runtime status
+- `remote.html` / `src/remote/main.js`
+  - registers the service worker and hosts the scoped playground iframe
+- `sw.js`
+  - intercepts same-origin requests and routes them to the scoped runtime
+- `php-worker.js`
+  - owns the @php-wasm/web PHP instance for a scope, with crash recovery
+- `src/runtime/bootstrap.js`
+  - mounts the core, writes config, runs deploy, handles first boot and autologin
+- `src/runtime/vfs.js`
+  - helper that mounts the readonly FacturaScripts bundle into the WASM filesystem
 
-The dev server lives at `scripts/dev-server.mjs` and is wired through the
-Makefile `serve` target:
+## Storage model
+
+- Readonly core: mounted in memory under `/www/facturascripts`
+- Mutable database: `/persist/mutable/db/facturascripts.sqlite`
+- Mutable config: `/persist/mutable/config`
+- Mutable session: `/persist/mutable/session`
+- FacturaScripts writable directories: `/www/facturascripts/Dinamic`, `/www/facturascripts/MyFiles`, `/www/facturascripts/Plugins`
+
+Do not reintroduce boot-time copying of the entire core into persistent browser storage.
+
+## Bundle and manifest
+
+Relevant files:
+
+- `scripts/build-facturascripts-bundle.sh`
+- `scripts/fetch-facturascripts-source.sh`
+- `scripts/generate-manifest.mjs`
+- `scripts/esbuild.worker.mjs`
+- `src/runtime/manifest.js`
+
+Default build source:
+
+- `FS_REF=https://github.com/erseco/facturascripts.git`
+- `FS_REF_BRANCH=feature/add-sqlite-support`
+
+If you change bundle structure, update manifest generation and runtime loading together.
+
+## Configuration
+
+Runtime defaults live in:
+
+- `playground.config.json`
+- `src/shared/config.js`
+
+Important flags:
+
+- `bundleVersion`
+- `defaultBlueprintUrl`
+- `siteTitle`
+- `landingPath`
+- `locale`
+- `timezone`
+- `autologin`
+- `resetOnVersionMismatch`
+- `admin.*`
+- `runtimes[]`
+
+Blueprint input lives in:
+
+- `assets/blueprints/default.blueprint.json`
+- `assets/blueprints/blueprint-schema.json`
+- `src/shared/blueprint.js`
+
+Current blueprint focus:
+
+- debug mode
+- landing page
+- title, locale, timezone
+- login credentials
+- declarative plugin list
+
+Plugin download/materialization is implemented in `src/runtime/addons.js`.
+
+## Development conventions
+
+- The repo uses ESM.
+- Prefer explicit helpers over deeply coupled inline logic.
+- Prefer `URL` helpers for browser paths and POSIX-style paths for runtime FS paths.
+- Keep comments short and explain why, not what.
+
+## Linting, formatting, and testing
+
+Before committing or submitting a PR, always run:
 
 ```bash
-make bundle              # build dist/php-worker.bundle.js (+ runtime assets) FIRST
-PORT=8087 make serve     # serve at http://127.0.0.1:8087
-# or one-shot:
-PORT=8087 make up        # = bundle + serve
+make lint      # Run Biome linter — must pass with zero errors
+make format    # Auto-fix lint and formatting issues
+make test      # Run unit tests — all must pass
+make test-e2e  # Run browser e2e tests
 ```
 
-The exact serve command is `PORT=$(PORT) node ./scripts/dev-server.mjs`
-(`PORT` defaults to `8085`).
+Biome is configured in `biome.json` and checks `src/`, `tests/`, and `scripts/`. Fix any lint errors before committing. Use `make format` to auto-fix formatting and safe lint issues.
 
-**CRITICAL gotcha:** the dev server binds to `process.env.PORT`. A privileged
-port (`<1024`) fails with `EACCES`. Always use a high port (e.g. `8087`):
+Typical syntax checks:
 
 ```bash
-PORT=8087 make serve     # good
-PORT=80   make serve     # EACCES — bind permission denied
+node --check sw.js
+node --check php-worker.js
+node --check src/runtime/bootstrap.js
+node --check src/runtime/vfs.js
+node --check src/shell/main.js
+node --check src/shared/blueprint.js
 ```
 
-The server requires the build outputs to exist: `dist/php-worker.bundle.js` (from
-`make bundle` / `npm run build-worker`) and `index.html`. Run `make bundle` first
-on a clean checkout; the bundle and `assets/facturascripts/*` are gitignored.
+Useful manual validation areas:
 
----
+- first boot install
+- reload with persisted state
+- autologin flow
+- navigation inside FacturaScripts
+- service worker updates after rebuild or redeploy
 
-## Scoped URL routing
+If a change touches routing or boot behavior, prefer checking real browser behavior and not only syntax.
 
-- The **shell** is served at `/`.
-- The shell renders `#site-frame` whose `src` is
-  `remote.html?scope=<scopeId>&runtime=<runtimeId>&path=<path>`
-  (built by `resolveRemoteUrl()` in `src/shared/paths.js`).
-- `remote.html` registers the SW and hosts a **nested** iframe (`#remote-frame`)
-  pointing at the real scoped app path.
-- The scoped app path is **`playground/<scopeId>/<runtimeId>/<path>`**
-  (built by `buildScopedSitePath()` in `src/shared/paths.js`). The service
-  worker intercepts requests under this prefix and routes them to the PHP worker
-  for that scope.
+## Key files
 
-`runtimeId` is a PHP-version id from `playground.config.json` →
-`runtimes[]`: **`php81`, `php82`, `php83` (default), `php84`, `php85`** (labels
-`PHP 8.1`…`PHP 8.5`). Note: `id` is `php83`, but the underlying `phpVersion` is
-`"8.3"` — the worker bundle strips any PHP versions not offered here to keep
-`dist/` small (see `scripts/esbuild.worker.mjs`).
+- `index.html`: shell UI
+- `remote.html`: runtime host page (loading overlay with progress bar)
+- `sw.js`: service worker routing and static asset caching
+- `php-worker.js`: PHP worker bridge, boot lifecycle, crash recovery, request tracing
+- `playground.config.json`: runtime defaults
+- `src/runtime/bootstrap.js`: installation, config writing, autologin, Forja cache
+- `src/runtime/php-loader.js`: @php-wasm/web runtime creation, OPcache config, fs-persistence
+- `src/runtime/php-compat.js`: wraps @php-wasm PHP instance with cookie jar, front-controller routing
+- `src/runtime/fs-persistence.js`: IndexedDB-backed filesystem journal
+- `src/runtime/crash-recovery.js`: WASM crash detection, snapshot, automatic restart
+- `src/runtime/vfs.js`: readonly core bundle mount helper
+- `src/runtime/manifest.js`: manifest loading
+- `src/runtime/addons.js`: blueprint plugin install/activate and seed data
+- `src/runtime/networking.js`: proxy URL resolution for plugin downloads
+- `src/shared/blueprint.js`: blueprint parsing and normalization
+- `src/shared/config.js`: playground configuration loading and merging
+- `src/shared/paths.js`: path resolution utilities for subdirectory hosting
+- `src/shared/protocol.js`: BroadcastChannel naming and worker request IDs
+- `src/shared/storage.js`: browser persistence helpers
+- `src/styles/app.css`: shell styling
+- `Makefile`: common local workflow
+- `playwright.config.mjs`: Playwright runner and local web server bootstrap
+- `tests/e2e/`: browser e2e tests for the shell/runtime UI
+- `CHANGELOG-TECHNICAL.md`: decision log — read before making changes
 
-`scopeId` comes from `getOrCreateScopeId()` (`src/shared/storage.js`): it reads
-the `scope` query param or `sessionStorage`, and persists a generated id into
-`sessionStorage`. This is what makes persistence **per-session** (see below).
+## Common pitfalls
 
-The shell supports subdirectory hosting — do not assume the app is at `/`. Path
-helpers (`getBasePath`, `joinBasePath`) in `src/shared/paths.js` handle the
-prefix.
+- Do not assume the app is hosted at `/`; it may run in a subdirectory.
+- Do not assume persisted state is reset automatically; version mismatch handling depends on config.
+- Do not assume plugins declared in blueprint are automatically installed.
+- Do not break the separation between readonly core and mutable overlay.
+- Do not forget that service worker changes may require a hard refresh.
+- The real curl extension in @php-wasm/web does NOT go through `globalThis.fetch`. JS fetch blockers do not intercept curl calls. Use PHP-side cache pre-population instead.
+- The `auto_prepend_file` must be at `/internal/shared/auto_prepend_file.php` — this is the only path @php-wasm reads. Writing to other paths has no effect.
+- `Plugins::deploy()` must be called with `(true, true)` to populate the `pages` table. Without `initControllers`, FK constraints on `users.homepage` fail.
+- `opcache.file_cache_only` must be `1` in WASM (shared memory OPcache needs COOP/COEP headers).
+- FacturaScripts uses `parent.document.location` for row click navigation. The SW injects a `parent === window` override in every HTML response. Do not remove this or iframe navigation breaks.
+- The SW rewrites `data-href` attributes alongside `href`/`src`/`action`. FacturaScripts stores navigation URLs in `data-href` on `<tr class="clickableRow">`.
+- `Cache::clear()` in FacturaScripts deletes ALL `.cache` files including Forja cache. Bootstrap patches `Cache.php` in MEMFS to exclude `forja_*` files. Without this, plugin enable/disable triggers 20s curl timeouts.
 
----
+## Area-specific guidance
 
-## Boot & readiness
+If you edit `sw.js`:
 
-Booting is **slow** (WASM download + PHP boot + provisioning — tens of seconds,
-plugin ops ~20s). Poll for readiness rather than using fixed sleeps.
+- preserve scoped runtime routing
+- preserve subdirectory hosting support
 
-Readiness signals (this is exactly what the e2e suite waits on):
+If you edit `bootstrap.js`:
 
-```js
-// #address-input becomes enabled, and #site-frame src contains "scope="
-await expect(page.locator("#address-input")).toBeEnabled();
-await expect(page.locator("#site-frame")).toHaveAttribute("src", /scope=/);
+- verify install idempotency
+- verify persisted data survives reloads
+- verify autologin still works
+
+If you edit bundle scripts:
+
+- keep manifest schema and runtime readers in sync
+- avoid casual output filename changes
+
+## Deployment notes
+
+This project is intended for static deployment.
+
+After changes to `sw.js`, `remote.html`, or runtime boot files:
+
+- redeploy the site
+- force-refresh the browser or clear the old service worker
+- verify from a clean scope when possible
+
+## Performance notes
+
+- Plugin operations (install/enable) take ~20s. This is pure PHP execution in WASM (`Plugins::deploy` + `initControllers` for 111 controllers). No network calls involved. See `CHANGELOG-TECHNICAL.md` for details.
+- Page loads take ~5-15s depending on complexity. OPcache file cache helps on warm loads.
+- Intl extension is disabled to reduce download size (~27MB ICU data). FacturaScripts does not require it.
+- Forja cache files must be pre-populated before any PHP request to avoid 10s curl timeouts.
+
+## Debugging
+
+### By hand (in the browser)
+
+Serve the playground locally and drive it in a real browser — most runtime bugs (routing, persistence, boot) only reproduce there.
+
+```bash
+make serve            # PORT defaults to 8085; override with PORT=9090 make serve
 ```
 
-The boot overlay (progress bar / status text) lives in `remote.html`
-(`#progress-fill`, `#progress-percent`, `#remote-status`) and is driven by
-`progress` messages posted from `php-worker.js` over a `BroadcastChannel`.
+Use a high port. A port below 1024 fails with `EACCES` (the dev server is not privileged). Then open `http://localhost:<port>/`.
 
----
+Frame and routing layout:
 
-## Persistence model (Wave 4)
+- The shell loads at `/` (`index.html` → `#site-frame`).
+- `#site-frame` hosts `remote.html`, which nests `#remote-frame`.
+- `#remote-frame` points at `/playground/<scope>/<runtime>/…`, intercepted and served by the Service Worker.
+- `<runtime>` is a runtime id such as `php83` (default; see `playground.config.json`).
+- `<scope>` is a sessionStorage-scoped id (`getOrCreateScopeId`), unique within a browser session, so each tab/session gets isolated mutable state.
 
-Mutable state under **`/persist`** is journaled to IndexedDB via
-`@php-wasm/fs-journal`. Code: `src/runtime/fs-persistence.js`. Mutable paths:
-
-- `/persist/mutable/db/facturascripts.sqlite` — SQLite database
-  (`PLAYGROUND_DB_PATH` in `src/runtime/bootstrap-paths.js`)
-- `/persist/mutable/config` — playground state JSON
-- `/persist/mutable/session` — PHP sessions
-
-There are **two** IndexedDB journals (verified prefixes in
-`src/runtime/fs-persistence.js`):
-
-- **`facturascripts-fs-journal:<scopeId>`** — the `/persist` data journal, keyed
-  by `scopeId`.
-- **`facturascripts-opcache:<phpVersion>`** — the OPcache bytecode journal, keyed
-  by PHP version, so PHP only compiles each file once across reloads (big warm
-  speedup). OPcache ops are replayed *before* `/persist` so bytecode is present
-  before any script runs.
-
-Each db has a single object store named **`ops`** (`autoIncrement`).
-
-Because `scopeId` is stored in **`sessionStorage`**, durability is
-**within-session**: persisted data survives reloads in the same tab, but is lost
-when the tab closes (a new tab gets a new scope, hence a fresh journal db).
-
-SQLite temp files (`.sqlite-journal`, `.sqlite-wal`, `.sqlite-shm`) are
-explicitly **skipped** when journaling — they are created and deleted inside a
-single transaction and would cause hydration failures if journaled.
-
-### replayResilient — never brick boot on one bad op
-
-On boot, saved ops are replayed onto the fresh MEMFS via the
-`replayResilient(rawPhp, ops)` helper:
+The runtime is ready when `#address-input` is enabled. First boot is slow (install + deploy), so poll rather than assume:
 
 ```js
-function replayResilient(rawPhp, ops) {
-  if (!ops || ops.length === 0) return;
-  try {
-    replayFSJournal(rawPhp, ops);          // fast path: whole batch at once
-  } catch {
-    for (const op of ops) {                 // slow path: op-by-op
-      try { replayFSJournal(rawPhp, [op]); }
-      catch { /* skip un-appliable op */ }
-    }
-  }
+// In the shell page console (top frame).
+const addr = document.querySelector("#address-input");
+console.log("ready:", addr && !addr.disabled);
+```
+
+Dump the IndexedDB journals to inspect persisted ops. There are TWO databases — the per-scope filesystem journal and the per-PHP-version OPcache journal — both using the `ops` object store:
+
+```js
+// In the shell page console. Replace <scope> and <phpVersion> with the live values.
+async function dumpJournal(dbName) {
+  const db = await new Promise((res, rej) => {
+    const r = indexedDB.open(dbName, 1);
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+  const ops = await new Promise((res, rej) => {
+    const r = db.transaction("ops", "readonly").objectStore("ops").getAll();
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+  console.log(dbName, ops.length, ops);
+  db.close();
 }
+dumpJournal("facturascripts-fs-journal:<scope>"); // mutable app data (DB, config, session)
+dumpJournal("facturascripts-opcache:<phpVersion>"); // compiled bytecode, e.g. 8.3
 ```
 
-Why: a journaled op can become un-appliable against a clean FS when its
-prerequisite state was never journaled — e.g. an `unlink` of a file whose CREATE
-wasn't recorded leaves a dangling delete that throws. The fast path replays the
-whole batch; on any throw it falls back to op-by-op and skips the failing ones (a
-failed `unlink` just means the file is already absent — the intended end state).
-This guarantees **a single bad op never bricks the reload.**
+Default admin credentials are `admin` / `admin` (see `playground.config.json` → `admin.*`). Autologin is on by default.
 
-### Reset
+Notes when debugging persistence and plugins:
 
-`?clean=1` on the remote URL, or the **Reset Playground** button
-(`#reset-button` in the shell), triggers a clean boot. The shell sets
-`pendingCleanBoot` → `updateFrame()` appends `clean=1` → the worker boots with
-`forceCleanBoot`, which calls `clearJournal(scopeId)` **and**
-`clearOpcacheJournal(phpVersion)` (see `src/runtime/php-loader.js`) instead of
-`initFsPersistence()`. Reset also clears the scope's sessionStorage state.
+- Plugins install PHP-side: `addons.js` downloads the ZIP, then calls `Plugins::add($zipPath, …)` which uses `ZipArchive`. This is not a JS-side extraction.
+- Persistence replays via `replayResilient` (`fs-persistence.js`): the whole batch is replayed first, and on any failure it replays op-by-op and skips the un-appliable ones. A single bad journal op never bricks the reload — so a "missing" file after reload usually means an op was skipped, not that journaling failed.
 
-### Key lesson (general)
+Reset a corrupted scope with the `#reset-button` ("Reset Playground") in the shell, or by booting with `?clean=1`. Both force a clean boot that clears BOTH journals (`clearJournal` for the FS journal and `clearOpcacheJournal` for the OPcache journal).
 
-Persist **data, not derived caches**, and a persistence replay must **never**
-brick boot on one bad op — hence `replayResilient`. (OPcache is journaled
-separately, keyed by PHP version, precisely because it is a derived cache that is
-safe to drop.)
+### With the e2e suite (Playwright)
 
----
-
-## Plugins via ZipArchive
-
-FacturaScripts plugins are installed **PHP-side**, the memory-safe native way —
-not by JS-decompressing into MEMFS. `src/runtime/addons.js` writes the plugin ZIP
-bytes to the WASM FS, then runs PHP that calls:
-
-```php
-$zip = new ZipArchive();
-$zip->open($zipPath);
-// ...
-Plugins::add($zipPath, basename($zipPath), true);   // install
-Plugins::enable($resolvedName);                       // activate
-```
-
-Because plugin install already used `Plugins::add` → `ZipArchive` (native,
-streaming, memory-safe), it was **already correct and was left untouched** by the
-Wave 1 core-extraction work that moved the readonly core to a native extraction
-path. Do not "optimize" plugin install into JS-side unzipping.
-
-Plugin operations are PHP-CPU-bound (~20s for `Plugins::deploy` +
-`initControllers`), not network-bound. See `CHANGELOG-TECHNICAL.md`.
-
----
-
-## Admin credentials
-
-Defined in `playground.config.json` → `admin`:
-
-```json
-"admin": { "username": "admin", "password": "admin", "email": "admin@example.com" }
-```
-
-So the login is **`admin` / `admin`** (not `admin`/`password`). With
-`"autologin": true`, the playground keeps an admin session, so you usually land
-logged in.
-
----
-
-## Debugging recipes (page-console snippets)
-
-Run these in the **page console** (the shell tab). To inspect the SQLite/journal
-you typically want the same origin that owns the IndexedDB dbs.
-
-**List all IndexedDB databases:**
-
-```js
-await indexedDB.databases();
-// look for:  facturascripts-fs-journal:<scope>  and  facturascripts-opcache:<phpVersion>
-```
-
-**Read the persisted FS journal ops for the active scope:**
-
-```js
-const scope = sessionStorage.getItem("facturascripts-playground:active"); // active scopeId
-const db = await new Promise((res, rej) => {
-  const r = indexedDB.open(`facturascripts-fs-journal:${scope}`);
-  r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
-});
-const ops = await new Promise((res, rej) => {
-  const r = db.transaction("ops", "readonly").objectStore("ops").getAll();
-  r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
-});
-console.log(ops.length, ops.slice(0, 5));
-```
-
-(Confirm the active-scope key with `Object.keys(sessionStorage)` — the prefix is
-`facturascripts-playground:`.)
-
-**Inspect the OPcache journal (keyed by PHP version, e.g. `8.3`):**
-
-```js
-indexedDB.open("facturascripts-opcache:8.3");  // then read the "ops" store the same way
-```
-
-**Force a clean boot from the URL (skips replay, clears both journals):**
-
-Append `?clean=1` to the remote frame URL, or just click **Reset Playground**
-(`#reset-button`).
-
-**Wipe everything for a truly fresh boot:**
-
-```js
-for (const { name } of await indexedDB.databases()) indexedDB.deleteDatabase(name);
-sessionStorage.clear();
-const regs = await navigator.serviceWorker.getRegistrations();
-for (const r of regs) await r.unregister();
-location.reload();
-```
-
-**Capture phpinfo / PHP diagnostics:** open the side panel
-(`#panel-toggle-button`) → PHP Info tab (`#phpinfo-tab`); under the hood the
-shell posts `{ kind: "capture-phpinfo" }` to the worker.
-
-**Watch boot progress / errors:** the worker posts `progress` / `error` /
-`ready` messages on a `BroadcastChannel` (names from `src/shared/protocol.js`).
-The remote host page surfaces them in the overlay.
-
-Tip: curl/network errors inside WASM do **not** go through `globalThis.fetch`, so
-DevTools "Network" and JS fetch blockers won't show them. Use PHP-side logging /
-the worker's error messages instead (see the `wasm-network-error` path in
-`php-worker.js`).
-
----
-
-## Build & test
+Browser e2e tests live in `tests/e2e/*.spec.mjs` and run with:
 
 ```bash
-make deps        # npm install
-make prepare     # sync-browser-deps + build-worker + prepare-runtime
-make bundle      # build the readonly FacturaScripts bundle (+ prepare)
-make lint        # Biome check  — must pass clean
-make format      # Biome check --fix (auto-fix + formatting)
-make test        # unit tests:  node --test tests/*.test.mjs
-make test-e2e    # Playwright browser suite (npm run test:e2e)
+npm run test:e2e      # = playwright test
+make test-e2e         # same thing
 ```
 
-- **Biome auto-wraps long lines** and reformats; match its formatting (run
-  `make format` before committing so the diff is what CI expects).
-- Worker bundle: `npm run build-worker` (`scripts/esbuild.worker.mjs`) → emits
-  `dist/php-worker.bundle.js`.
-- **Confirm a change actually reached the bundle:**
+`playwright.config.mjs` boots the dev server automatically. Tests wait for readiness via `#address-input` being enabled.
 
-  ```bash
-  grep <token> dist/php-worker.bundle.js
-  ```
+In CI the e2e run is the last step ("Run Playwright tests") of the single `test` job in `.github/workflows/ci.yml` — there is no separate `e2e` job.
 
-  (esbuild bundles the worker, so editing `src/runtime/*` has no runtime effect
-  until you rebuild.)
-- Unit tests live in `tests/*.test.mjs`; Playwright specs in `tests/e2e/`
-  (config: `playwright.config.mjs`, base URL `http://127.0.0.1:8085`, which the
-  config boots via `PORT=8085 make up`/`serve`).
+Gotcha: run each sibling playground's e2e suite on its own. Playwright reuses an existing dev server on a shared port (`reuseExistingServer`), so two playgrounds' e2e runs in parallel will hit the same server and cross-contaminate each other's apps and state.
 
----
+## Reference projects
 
-## CI gotchas
-
-CI is GitHub Actions (`.github/workflows/ci.yml`, workflow name **Tests**).
-
-- **Single `test` job runs everything.** Unlike omeka/moodle (which have a
-  separate `e2e` job), FacturaScripts runs its **e2e *inside* the `test` job**:
-  checkout → `npm install` → `node --check` syntax pass → `make test` →
-  `make lint` → `mkdocs build --strict` → `npx playwright install` →
-  `npm run test:e2e`. There is no standalone e2e job — keep it that way unless
-  you intend to split it.
-- **`make test` runs WITHOUT `sync-browser-deps`.** CI does not vendor browser
-  deps, so `vendor/` is absent (it is gitignored). Therefore runtime code must
-  import shared deps as **bare specifiers** — `import ... from "@php-wasm/web"`,
-  `"@php-wasm/fs-journal"`, `"@php-wasm/universal"`, `"fflate"` — **never**
-  `../vendor/...`. Bare specifiers resolve from `node_modules` in CI and get
-  rewritten to `vendor/` only for the browser at sync time.
-- **Never `git add -A`.** It would commit local `.claude/`, `.omc/`, and other
-  workspace artifacts. Stage explicit files only (`git add <path>`).
-- **CodeQL / least privilege:** the workflow declares `permissions: contents:
-  read`. Preserve this; do not widen token permissions without reason.
-- Docs build is part of CI (`mkdocs build --strict`) — broken Markdown links in
-  `docs/`/`mkdocs.yml` fail the build.
-
----
-
-## Common pitfalls (carry-over)
-
-- `auto_prepend_file` must be at `/internal/shared/auto_prepend_file.php` — the
-  only path @php-wasm reads. Writing elsewhere has no effect.
-- `Plugins::deploy()` must be `(true, true)`; without `initControllers` the
-  `pages` table stays empty and FK constraints on `users.homepage` fail.
-- `opcache.file_cache_only` must be `1` in WASM (shared-memory OPcache needs
-  COOP/COEP).
-- The SW injects a `parent === window` override into every HTML response;
-  FacturaScripts uses `parent.document.location` for row-click navigation. Don't
-  remove it or iframe navigation breaks. The SW also rewrites `data-href`
-  alongside `href`/`src`/`action`.
-- `Cache::clear()` deletes ALL `.cache` files including the Forja cache; bootstrap
-  patches `Cache.php` in MEMFS to exclude `forja_*` — otherwise plugin
-  enable/disable triggers ~20s curl timeouts.
-- Don't reintroduce boot-time copying of the entire core into persistent storage
-  (readonly core stays in MEMFS; only `/persist` is journaled).
-
----
-
-## Sibling projects
-
-Same `@php-wasm` stack — useful for cross-referencing patterns:
-Nextcloud, Moodle, Omeka-S playgrounds (Omeka-S is the original source of
-`php-compat.js`, since adapted here). WordPress Playground is the upstream
-architectural reference for `@php-wasm/web`.
+- WordPress Playground: architectural inspiration, @php-wasm/web source
+- FacturaScripts: application runtime being packaged
+- Moodle Playground (`/Users/ernesto/Downloads/git/moodle-playground/`): same @php-wasm stack, reference for patterns
+- Omeka-S Playground: original source of `php-compat.js` (now adapted for FacturaScripts)
