@@ -9,6 +9,12 @@ FacturaScripts Playground ejecuta una instancia completa de [FacturaScripts](htt
 ![Captura de FacturaScripts Playground](https://raw.githubusercontent.com/erseco/facturascripts-playground/main/.github/screenshot.png)
 
 <p align="center">
+  <a href="https://facturascripts-playground.pages.dev/" target="_blank" rel="noopener noreferrer">
+    <img src="assets/playground-preview-button.svg" alt="Try on FacturaScripts Playground" width="224">
+  </a>
+</p>
+
+<p align="center">
   <a href="https://erseco.github.io/facturascripts-playground/">
     <img src="https://raw.githubusercontent.com/erseco/facturascripts-playground/main/ogimage.png" alt="Probar FacturaScripts en vivo" width="400">
   </a>
