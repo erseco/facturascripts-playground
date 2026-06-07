@@ -21,6 +21,7 @@ function buildBlueprintData(overrides = {}) {
 }
 
 async function waitForRuntimeReady(page) {
+  await expect(page.locator("#runtime-id-value")).not.toHaveText("-");
   await expect(page.locator("#address-input")).toBeEnabled();
   await expect(page.locator("#site-frame")).toHaveAttribute("src", /scope=/);
 }
@@ -68,13 +69,46 @@ test("loads blueprint overrides and exposes runtime settings", async ({
   await expect(page.locator("#blueprint-textarea")).toHaveValue(
     /Playwright E2E Site/,
   );
+});
 
-  await page.locator("#settings-button").click();
-  await expect(page.locator("#settings-popover")).toHaveClass(/is-open/);
-  const optionCount = await page
-    .locator("#settings-php-version option")
-    .count();
-  expect(optionCount).toBeGreaterThan(0);
+test("info panel hosts the version config with a dirty-state apply", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForRuntimeReady(page);
+
+  // The floating settings popover and gear button are gone — the version config
+  // now lives in the Info panel (single source of truth).
+  await expect(page.locator("#settings-button")).toHaveCount(0);
+  await expect(page.locator("#settings-popover")).toHaveCount(0);
+
+  await page.locator("#panel-toggle-button").click();
+
+  const phpOptions = await page.locator("#info-php-version option").count();
+  expect(phpOptions).toBeGreaterThan(0);
+
+  // Clean state: no Apply button and no destructive warning.
+  await expect(page.locator("#config-apply")).toBeHidden();
+  await expect(page.locator("#config-warning")).toBeHidden();
+
+  // Changing the PHP version reveals the Apply button + the warning. Reselecting
+  // the original value clears the dirty state (no Discard button needed).
+  const current = await page.locator("#info-php-version").inputValue();
+  const other = await page
+    .locator("#info-php-version option")
+    .evaluateAll(
+      (opts, cur) => opts.find((o) => o.value !== cur)?.value,
+      current,
+    );
+  if (other) {
+    await page.locator("#info-php-version").selectOption(other);
+    await expect(page.locator("#config-apply")).toBeVisible();
+    await expect(page.locator("#config-warning")).toBeVisible();
+
+    await page.locator("#info-php-version").selectOption(current);
+    await expect(page.locator("#config-apply")).toBeHidden();
+    await expect(page.locator("#config-warning")).toBeHidden();
+  }
 });
 
 test("persists /persist to IndexedDB and reboots from it on reload", async ({
