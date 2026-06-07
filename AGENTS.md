@@ -365,3 +365,32 @@ Gotcha: run each sibling playground's e2e suite on its own. Playwright reuses an
 - FacturaScripts: application runtime being packaged
 - Moodle Playground (`/Users/ernesto/Downloads/git/moodle-playground/`): same @php-wasm stack, reference for patterns
 - Omeka-S Playground: original source of `php-compat.js` (now adapted for FacturaScripts)
+
+## Persistence model (per-tab storage + blueprint reset)
+
+Mutable state under `/persist` is journaled to IndexedDB (`facturascripts-fs-journal:<scope>`) via
+`@php-wasm/fs-journal`, so it survives reloads. Key facts for future work:
+
+- **Per-tab, within-session.** `scopeId` lives in `sessionStorage`, so each
+  browser tab/window has its own environment. Opening the playground in a new tab
+  starts clean — nothing is shared (only *duplicating* a tab copies
+  `sessionStorage`). State is lost when the tab closes.
+- **A different blueprint starts fresh.** The persisted env is keyed by the
+  blueprint *source* — `blueprintSourceKey(href)` in `src/shared/paths.js`
+  (`url:<value>` for `?blueprint-url=`, `inline:<hash>` for `?blueprint=` /
+  `?blueprint-data=`, else `default`) — remembered per scope in `sessionStorage`
+  (`blueprint-source:<scope>`). Loading a **different** blueprint in the same tab
+  forces a clean boot (discards the previous `/persist` and installs fresh);
+  **reloading the same blueprint keeps the data.** (Same intent as WordPress
+  Playground, which serves URL blueprints as temporary by default and keys
+  persisted sites per site-slug.)
+- **Clean boot wiring.** On a clean boot the shell adds `&clean=1` to the
+  `#site-frame` remote URL; the worker then `clearJournal`s and **re-starts
+  journaling** (`initFsPersistence` runs after the clear in
+  `src/runtime/php-loader.js`) so the fresh env persists on later reloads. The
+  `#reset-button` triggers the same path.
+- **Flush.** On each debounced flush the journal collapses ops *before* hydrating
+  (`collapseAndHydrate` = `hydrateUpdateFileOps(php, normalizeFilesystemOperations(ops))`)
+  so a heavy install that rewrites the SQLite DB hundreds of times doesn't OOM.
+- **Inspect:** `await indexedDB.databases()` → open `facturascripts-fs-journal:<scope>` → read the
+  `ops` object store.
