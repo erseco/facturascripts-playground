@@ -1,3 +1,4 @@
+import { resolveBootstrapArchive } from "../../lib/facturascripts-loader.js";
 import {
   buildEffectivePlaygroundConfig,
   normalizeBlueprint,
@@ -189,10 +190,24 @@ async function performAutologin(php, config, publish) {
   }
 }
 
+/**
+ * Start downloading the readonly-core manifest + bundle right away so the fetch
+ * overlaps the WASM runtime compile in php.refresh() (parallel boot). Resolves
+ * to { manifest, bytes }, consumed by bootstrapFacturaScripts once the live
+ * runtime can extract it. The bundle is Cache-API backed, so a failed or
+ * duplicated fetch is cheap.
+ */
+export function startCoreArchivePrefetch({ onProgress } = {}) {
+  return fetchManifest().then((manifest) =>
+    resolveBootstrapArchive({ manifest }, onProgress),
+  );
+}
+
 export async function bootstrapFacturaScripts({
   config: rawConfig,
   blueprint: rawBlueprint,
   clean,
+  corePrefetch = null,
   php,
   publish,
   runtimeId,
@@ -203,7 +218,10 @@ export async function bootstrapFacturaScripts({
   const config = buildEffectivePlaygroundConfig(rawConfig, blueprint);
 
   publish("Loading FacturaScripts manifest.", 0.2);
-  const manifest = await fetchManifest();
+  // Reuse the manifest + core bytes prefetched in parallel with php.refresh()
+  // when available; otherwise fetch lazily.
+  const prefetched = corePrefetch ? await corePrefetch : null;
+  const manifest = prefetched?.manifest ?? (await fetchManifest());
   const manifestState = buildManifestState(
     manifest,
     runtimeId,
@@ -232,7 +250,11 @@ export async function bootstrapFacturaScripts({
   }
 
   publish("Mounting FacturaScripts readonly core.", 0.25);
-  await mountReadonlyCore(php, manifest, { root: FS_ROOT, publish });
+  await mountReadonlyCore(php, manifest, {
+    root: FS_ROOT,
+    publish,
+    bytes: prefetched?.bytes ?? null,
+  });
 
   publish("Creating mutable directory layout.", 0.4);
   const mutableDirs = [

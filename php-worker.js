@@ -3,7 +3,11 @@ import {
   createPhpBridgeChannel,
   createShellChannel,
 } from "./src/shared/protocol.js";
-import { bootstrapFacturaScripts, PLAYGROUND_DB_PATH } from "./src/runtime/bootstrap.js";
+import {
+  bootstrapFacturaScripts,
+  PLAYGROUND_DB_PATH,
+  startCoreArchivePrefetch,
+} from "./src/runtime/bootstrap.js";
 import { createPhpRuntime } from "./src/runtime/php-loader.js";
 import {
   isEmscriptenNetworkError,
@@ -129,12 +133,38 @@ async function getRuntimeState() {
       phpCorsProxyUrl: config.phpCorsProxyUrl || null,
     });
 
-    postShell({
-      kind: "progress",
-      title: "Refreshing PHP runtime",
-      detail: `Booting ${runtime.label}.`,
-      progress: 0.12,
+    // Monotonic progress: the parallel core download and the bootstrap steps
+    // interleave, so clamp the reported progress so the bar never goes backward.
+    let maxProgress = 0;
+    const publishProgress = (title, detail, progress) => {
+      if (typeof progress === "number") {
+        maxProgress = Math.max(maxProgress, progress);
+      }
+      postShell({ kind: "progress", title, detail, progress: maxProgress });
+    };
+
+    // Parallel boot: start downloading the readonly-core manifest + bundle now
+    // so the fetch overlaps the WASM runtime compile in php.refresh().
+    const corePrefetch = startCoreArchivePrefetch({
+      onProgress: (p) => {
+        if (p?.ratio !== undefined) {
+          publishProgress(
+            "Downloading FacturaScripts core",
+            `Downloading FacturaScripts core: ${Math.round(p.ratio * 100)}%`,
+            0.3 + p.ratio * 0.15,
+          );
+        }
+      },
     });
+    // Keep a handler attached so a prefetch failure during refresh doesn't raise
+    // an unhandledrejection; the real error still surfaces where it is awaited.
+    corePrefetch.catch(() => {});
+
+    publishProgress(
+      "Refreshing PHP runtime",
+      `Booting ${runtime.label}.`,
+      0.12,
+    );
 
     await php.refresh();
 
@@ -150,12 +180,7 @@ async function getRuntimeState() {
     }
 
     const publish = (detail, progress) => {
-      postShell({
-        kind: "progress",
-        title: "Bootstrapping FacturaScripts",
-        detail,
-        progress,
-      });
+      publishProgress("Bootstrapping FacturaScripts", detail, progress);
     };
 
     let bootstrapState;
@@ -164,6 +189,7 @@ async function getRuntimeState() {
         config,
         blueprint: activeBlueprint,
         clean: forceCleanBoot,
+        corePrefetch,
         php,
         publish,
         runtimeId,
