@@ -4,7 +4,6 @@ import {
   clearActiveBlueprint,
   encodeBlueprintParam,
   exportBlueprintPayload,
-  normalizeBlueprint,
   parseImportedBlueprintPayload,
   resolveBlueprintForShell,
 } from "../shared/blueprint.js";
@@ -71,22 +70,7 @@ const blueprintEditor = initBlueprintEditor(
     runButton: els.runButton,
     copyButton: els.copyBlueprintButton,
   },
-  {
-    // `config` is undefined until loadPlaygroundConfig() resolves later
-    // during boot(); read the live module-level binding on every call (not
-    // captured at init time) and guard so normalizeBlueprint's field access
-    // doesn't throw before config is ready.
-    normalizeBlueprint: (parsedJson) => {
-      if (
-        !parsedJson ||
-        typeof parsedJson !== "object" ||
-        Array.isArray(parsedJson)
-      ) {
-        throw new Error("Blueprint must be a JSON object.");
-      }
-      return normalizeBlueprint(parsedJson, config || {});
-    },
-  },
+  { getConfig: () => config },
 );
 
 let currentRuntimeId;
