@@ -1,4 +1,7 @@
-import { encodeBlueprintParam } from "../shared/blueprint.js";
+import {
+  encodeBlueprintParam,
+  normalizeBlueprint,
+} from "../shared/blueprint.js";
 import {
   buildBlueprintRunUrl,
   createBlueprintValidationResult,
@@ -22,18 +25,32 @@ function highlightForCodeJar(editor) {
  * existing code that reads `#blueprint-textarea` keeps working.
  *
  * @param {{mount: HTMLElement|null, textarea: HTMLTextAreaElement, statusEl: HTMLElement|null, runButton: HTMLButtonElement|null, copyButton: HTMLButtonElement|null}} elements
- * @param {{normalizeBlueprint: Function, location?: Location}} options
+ * @param {{location?: Location, getConfig?: () => object|undefined}} [options]
+ *   `getConfig` is read live on every validation pass (not captured once) —
+ *   `config` in main.js is only populated after this module initializes.
  * @returns {{setCode(text: string): void, getCode(): string, getValidationResult(): object, setLocked(locked: boolean): void}}
  */
-export function initBlueprintEditor(elements, options) {
+export function initBlueprintEditor(elements, options = {}) {
   const { mount, textarea, statusEl, runButton, copyButton } = elements;
-  const { normalizeBlueprint, location: loc = window.location } = options;
+  const loc = options.location || window.location;
+  const getConfig = options.getConfig || (() => undefined);
+
+  function normalize(parsedJson) {
+    if (
+      !parsedJson ||
+      typeof parsedJson !== "object" ||
+      Array.isArray(parsedJson)
+    ) {
+      throw new Error("Blueprint must be a JSON object.");
+    }
+    return normalizeBlueprint(parsedJson, getConfig() || {});
+  }
 
   let jar = null;
   let locked = false;
   let currentText = textarea ? textarea.value : "";
   let latestResult = createBlueprintValidationResult(currentText, {
-    normalizeBlueprint,
+    normalizeBlueprint: normalize,
   });
 
   function getText() {
@@ -54,7 +71,7 @@ export function initBlueprintEditor(elements, options) {
 
   function revalidate(text) {
     latestResult = createBlueprintValidationResult(text, {
-      normalizeBlueprint,
+      normalizeBlueprint: normalize,
     });
     applyStatus();
     updateRunButtonState();
