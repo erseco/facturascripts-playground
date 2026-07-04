@@ -40,13 +40,20 @@ fi
 SOURCE_COMMIT=$(git -C "$SOURCE_DIR" rev-parse HEAD)
 RELEASE=$(php -r 'preg_match("/function version\(\).*?return\s+([\d.]+)/s", file_get_contents("'"$FS_STAGE"'/Core/Kernel.php"), $m); echo $m[1] ?? "unknown";')
 SAFE_RELEASE=$(printf '%s' "$RELEASE" | sed 's/[^A-Za-z0-9._-]/_/g')
-BUNDLE_FILE="facturascripts-core-${SAFE_RELEASE}.zip"
+BUNDLE_FILE="facturascripts-core-${SAFE_RELEASE}.tar.zst"
 BUNDLE_PATH="$DIST_DIR/$BUNDLE_FILE"
 MANIFEST_PATH="$MANIFEST_DIR/latest.json"
-FILE_COUNT=$(find "$FS_STAGE" -type f | wc -l | tr -d ' ')
 
-echo "Creating ZIP bundle..." >&2
-(cd "$FS_STAGE" && zip -qr "$BUNDLE_PATH" .)
+# Pack the staged tree ($FS_STAGE holds the root-relative core) into a
+# deterministic, zstd-compressed tar. The browser runtime extracts it by
+# streaming zstd decode + incremental USTAR parsing (see
+# lib/streaming-tar-extract.js), so no ZipArchive stage is needed at boot.
+# The helper prints JSON with the tar entry (file) count, which is the exact
+# count the streaming parser reports at boot — used for the manifest parity
+# tripwire. Requires Node >= 22.15 for native node:zlib zstd.
+echo "Creating tar.zst bundle..." >&2
+BUNDLE_STATS=$(node "$SCRIPT_DIR/build-tar-zst-bundle.mjs" "$FS_STAGE" "$BUNDLE_PATH")
+FILE_COUNT=$(printf '%s' "$BUNDLE_STATS" | node -pe 'JSON.parse(require("fs").readFileSync(0,"utf8")).fileCount')
 echo "Bundle created: $BUNDLE_PATH ($FILE_COUNT files)" >&2
 
 node "$SCRIPT_DIR/generate-manifest.mjs" \

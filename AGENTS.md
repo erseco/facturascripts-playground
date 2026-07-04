@@ -129,6 +129,14 @@ Default build source:
 - `FS_REF=https://github.com/erseco/facturascripts.git`
 - `FS_REF_BRANCH=feature/add-sqlite-support`
 
+Bundle format: a single streaming `tar.zst` (`format: "tar.zst"`, `container: "tar"`,
+`codec: "zstd"` in the manifest). The build packs the staged core with
+`scripts/build-tar-zst-bundle.mjs` (deterministic USTAR + zstd level 19); the browser
+runtime extracts it in `src/runtime/vfs.js` by streaming zstd decode + incremental TAR
+parsing straight into MEMFS (`lib/streaming-tar-extract.js`). The old ZIP path is fully
+removed — there is no fallback. See `docs/streaming-tar-zst-core-bundle.md`. Building the
+bundle needs Node >= 22.15 (native `node:zlib` zstd); CI runs Node 24.
+
 If you change bundle structure, update manifest generation and runtime loading together.
 
 ## Configuration

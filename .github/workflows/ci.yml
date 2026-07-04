@@ -18,7 +18,10 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 20
+          # Node 24 (LTS) provides native node:zlib zstd (>= 22.15). The e2e
+          # webServer runs `make up` (build-tar-zst-bundle.mjs) when no bundle is
+          # present, so the bundle build needs it here too.
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -37,7 +40,10 @@ jobs:
           node --check src/runtime/networking.js
           node --check src/runtime/php-compat.js
           node --check src/runtime/php-loader.js
+          node --check src/runtime/vfs.js
           node --check src/runtime/wizard-script.js
+          node --check lib/streaming-tar-extract.js
+          node --check lib/facturascripts-loader.js
           node --check src/remote/main.js
           node --check src/shell/main.js
           node --check php-worker.js
