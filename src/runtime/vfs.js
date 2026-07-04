@@ -25,17 +25,20 @@ export async function mountReadonlyCore(
   // parsing, writing each entry straight into MEMFS as it decodes (see
   // lib/streaming-tar-extract.js). The uncompressed tar is never materialized —
   // peak memory is bounded to roughly one file plus a decoded chunk — so this
-  // avoids the fflate `unzipSync` heap OOM and the per-entry DecompressionStream
-  // overhead of the old ZIP path, while working on Chrome and Firefox alike. The
-  // install is not cached, so a reload retries; any decode/parse error fails
-  // loud (no JS fallback by design).
+  // avoids the whole-archive `unzipSync` heap OOM and the per-entry
+  // DecompressionStream overhead of the old ZIP path, while working on Chrome and
+  // Firefox alike. The install is not cached, so a reload retries; any
+  // decode/parse error fails loud (no JS fallback by design).
   publish?.("Extracting FacturaScripts core…", 0.45);
   const { createDecodedTarStream, extractTarStreamToPhp } = await import(
     "../../lib/streaming-tar-extract.js"
   );
-  const stream = await createDecodedTarStream(archiveBytes, "zstd");
-  // Drop the JS reference to the compressed buffer now that the decoder owns it,
-  // so the GC can reclaim it while the tar streams into MEMFS.
+  const codec = manifest?.bundle?.codec ?? "zstd";
+  const stream = await createDecodedTarStream(archiveBytes, codec);
+  // Release our local reference to the compressed buffer. On the native
+  // DecompressionStream path this lets the GC reclaim it as the tar streams into
+  // MEMFS; on the zstddec fallback the decoder keeps its own reference until
+  // extraction finishes, so this is a no-op there.
   archiveBytes = null;
   const stats = await extractTarStreamToPhp(stream, php, root);
 

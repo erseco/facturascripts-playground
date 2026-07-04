@@ -1,32 +1,33 @@
 // tar-ustar.mjs — a small, deterministic USTAR tar writer + reader.
 //
-// Why hand-rolled: the compression experiment needs a byte-for-byte reproducible
-// `.tar` so the reported SHA-256 is stable across runs and machines. The local
-// `tar` is bsdtar (libarchive), which does NOT accept GNU-tar's `--sort` and
-// injects libarchive/mac metadata, so it cannot produce a canonical archive.
-// A pure-JS writer gives full control over entry order and every header field.
+// Extracted verbatim from moodle-playground (canonical origin:
+// https://github.com/ateeducacion/moodle-playground) — keep in sync.
+//
+// Why hand-rolled: the build needs a byte-for-byte reproducible `.tar` so the
+// reported SHA-256 is stable across runs and machines. The local `tar` is
+// bsdtar (libarchive), which does NOT accept GNU-tar's `--sort` and injects
+// libarchive/mac metadata, so it cannot produce a canonical archive. A pure-JS
+// writer gives full control over entry order and every header field.
 //
 // Long-name strategy — IMPORTANT: names longer than the 100-byte USTAR `name`
 // field use the USTAR `prefix`/`name` split when a "/" lets them fit (prefix<=155,
 // name<=100), and fall back to a GNU `././@LongLink` ('L' typeflag) entry when no
 // such split exists. We deliberately do NOT use PAX extended headers: PHP's
-// `PharData` tar reader — the runtime extractor for ADR 0018 — silently IGNORES
-// PAX `path` records and writes long files under their truncated 100-byte name,
-// which collides and drops ~32 of Moodle's files (measured). PharData reads both
-// the USTAR prefix split and GNU longlink correctly, and so do bsdtar / GNU tar,
-// so this format keeps full file-count parity with the ZIP baseline.
+// `PharData` tar reader silently IGNORES PAX `path` records and writes long files
+// under their truncated 100-byte name, which collides and drops files. PharData
+// reads both the USTAR prefix split and GNU longlink correctly, and so do
+// bsdtar / GNU tar, so this format keeps full file-count parity.
 //
 // Determinism policy: entries are emitted files-only (no directory members, which
 // the runtime reconstructs anyway) in a fixed byte-wise sort, with mtime=0,
 // uid=gid=0, empty uname/gname, and a fixed mode.
 //
-// Reused semantics: entry-name sanitization mirrors sanitizeArchivePath() in
-// lib/moodle-loader.js (reject "..", strip leading "/", drop "." segments) so the
-// tar cannot carry a path-traversal entry — parity with the ZIP boot path.
+// Reused semantics: entry-name sanitization rejects "..", strips a leading "/",
+// and drops "." segments so the tar cannot carry a path-traversal entry.
 
 const BLOCK = 512;
 
-// --- name sanitization (parity with lib/moodle-loader.js) --------------------
+// --- name sanitization -------------------------------------------------------
 
 export function normalizeArchiveName(name) {
   return String(name).replaceAll("\\", "/").replace(/^\/+/, "");
@@ -43,8 +44,8 @@ export function sanitizeArchivePath(name) {
 }
 
 /**
- * Turn a { path -> Uint8Array } map (as produced by fflate `unzipSync`) into a
- * sorted, sanitized, files-only entry list ready for createUstarTar(). Directory
+ * Turn a { path -> Uint8Array } map of staged files into a sorted, sanitized,
+ * files-only entry list ready for createUstarTar(). Directory
  * keys (trailing "/") are dropped; unsafe paths are skipped. The sort is a stable
  * byte-wise comparison on the sanitized name so two runs over the same input
  * yield an identical archive.

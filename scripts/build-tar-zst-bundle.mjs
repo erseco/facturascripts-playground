@@ -6,14 +6,13 @@
 //
 // Deterministic USTAR + GNU longlink (never PAX — the streaming parser and PHP
 // readers do not honor PAX 'path' headers). zstd level 19 + long-distance matching
-// (windowLog 27) for strong cross-file dedup. Requires Node >= 22.15 (native
+// (windowLog 24) for strong cross-file dedup. Requires Node >= 22.15 (native
 // node:zlib zstd); CI must run Node 24 LTS.
 //
 // Usage: node scripts/build-tar-zst-bundle.mjs <stageDir> <out.tar.zst>
-// Prints JSON: { fileCount, bytes, sha256, uncompressedBytes }
+// Prints the packed file count on stdout (used for the manifest parity tripwire).
 
-import { createHash } from "node:crypto";
-import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import zlib from "node:zlib";
 import { createUstarTar, normalizeEntries } from "./lib/tar-ustar.mjs";
@@ -45,21 +44,16 @@ function walk(dir, base, map) {
 const fileMap = {};
 walk(stageDir, stageDir, fileMap);
 const entries = normalizeEntries(fileMap);
-const uncompressedBytes = entries.reduce((n, e) => n + e.data.length, 0);
 const tar = createUstarTar(entries, { mtime: 0 });
 const compressed = zlib.zstdCompressSync(tar, {
   params: {
     [zlib.constants.ZSTD_c_compressionLevel]: 19,
     [zlib.constants.ZSTD_c_enableLongDistanceMatching]: 1,
-    [zlib.constants.ZSTD_c_windowLog]: 27,
+    // windowLog 24 (vs 27): costs ~0.9% size on the moodle tree but shrinks the
+    // decode window 8× (128→16 MiB) that zstddec must allocate per client; for
+    // this bundle's small tree the size difference is neutral.
+    [zlib.constants.ZSTD_c_windowLog]: 24,
   },
 });
 writeFileSync(outFile, compressed);
-console.log(
-  JSON.stringify({
-    fileCount: entries.length,
-    bytes: compressed.length,
-    sha256: createHash("sha256").update(compressed).digest("hex"),
-    uncompressedBytes,
-  }),
-);
+console.log(entries.length);
