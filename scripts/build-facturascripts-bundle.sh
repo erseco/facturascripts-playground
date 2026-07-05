@@ -46,17 +46,21 @@ fi
 # transitive deps do.
 rm -rf "$FS_STAGE/node_modules/.bin"
 
-# Tripwire against silent drops: the tar packer (build-tar-zst-bundle.mjs) walks
-# regular files only (isFile()), rebuilds directories from each file's parent
-# path, and never follows symlinks — so any symlink or empty directory left in
-# the stage vanishes from the bundle with no trace, and the file-count parity
-# check (regular files on both sides) is blind to it. Fail loud instead.
+# The files-only tar packer (build-tar-zst-bundle.mjs) never emits directory
+# entries — it rebuilds dirs from each file's parent path — so empty directories
+# are bundle-neutral. composer/npm can legitimately leave some (or removing .bin
+# above may empty a parent), so prune them (cascading, deepest-first) instead of
+# failing the build.
+find "$FS_STAGE" -depth -type d -empty -delete
+
+# Tripwire against the real data-loss risk: the packer walks regular files only
+# (isFile()) and never follows symlinks, so any symlink left in the stage vanishes
+# from the bundle with no trace, and the file-count parity check (regular files on
+# both sides) is blind to it. Fail loud instead.
 SYMLINKS=$(find "$FS_STAGE" -type l)
-EMPTY_DIRS=$(find "$FS_STAGE" -type d -empty)
-if [ -n "$SYMLINKS" ] || [ -n "$EMPTY_DIRS" ]; then
-  echo "ERROR: staged tree has symlinks or empty dirs the tar packer would silently drop:" >&2
-  [ -n "$SYMLINKS" ] && { echo "  symlinks:" >&2; echo "$SYMLINKS" | sed 's/^/    /' >&2; }
-  [ -n "$EMPTY_DIRS" ] && { echo "  empty dirs:" >&2; echo "$EMPTY_DIRS" | sed 's/^/    /' >&2; }
+if [ -n "$SYMLINKS" ]; then
+  echo "ERROR: staged tree has symlinks the tar packer would silently drop:" >&2
+  echo "$SYMLINKS" | sed 's/^/    /' >&2
   exit 1
 fi
 
