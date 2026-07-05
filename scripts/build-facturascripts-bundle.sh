@@ -37,6 +37,29 @@ if [ -f "$FS_STAGE/package.json" ]; then
   fi
 fi
 
+# node_modules is served to the browser at runtime (Kernel routes /node_modules/*
+# to the Files controller and the layout templates load bootstrap/jquery/... from
+# it), so the bundle must keep it. But node_modules/.bin holds POSIX symlinks to
+# dev CLIs that are useless in the browser and that the files-only tar packer
+# would drop silently anyway — remove them. This is a no-op for the current
+# FacturaScripts frontend deps (none ship a bin) but guards CI machines whose
+# transitive deps do.
+rm -rf "$FS_STAGE/node_modules/.bin"
+
+# Tripwire against silent drops: the tar packer (build-tar-zst-bundle.mjs) walks
+# regular files only (isFile()), rebuilds directories from each file's parent
+# path, and never follows symlinks — so any symlink or empty directory left in
+# the stage vanishes from the bundle with no trace, and the file-count parity
+# check (regular files on both sides) is blind to it. Fail loud instead.
+SYMLINKS=$(find "$FS_STAGE" -type l)
+EMPTY_DIRS=$(find "$FS_STAGE" -type d -empty)
+if [ -n "$SYMLINKS" ] || [ -n "$EMPTY_DIRS" ]; then
+  echo "ERROR: staged tree has symlinks or empty dirs the tar packer would silently drop:" >&2
+  [ -n "$SYMLINKS" ] && { echo "  symlinks:" >&2; echo "$SYMLINKS" | sed 's/^/    /' >&2; }
+  [ -n "$EMPTY_DIRS" ] && { echo "  empty dirs:" >&2; echo "$EMPTY_DIRS" | sed 's/^/    /' >&2; }
+  exit 1
+fi
+
 SOURCE_COMMIT=$(git -C "$SOURCE_DIR" rev-parse HEAD)
 RELEASE=$(php -r 'preg_match("/function version\(\).*?return\s+([\d.]+)/s", file_get_contents("'"$FS_STAGE"'/Core/Kernel.php"), $m); echo $m[1] ?? "unknown";')
 SAFE_RELEASE=$(printf '%s' "$RELEASE" | sed 's/[^A-Za-z0-9._-]/_/g')
