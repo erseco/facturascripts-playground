@@ -22,6 +22,7 @@ nav:
   - Playground model: wordpress-playground.md
   - blueprint.json: blueprint-json.md
   - Development: development.md
+  - Core bundle (tar.zst): streaming-tar-zst-core-bundle.md
   - GitHub Action PR Preview: github-action-pr-preview.md
 markdown_extensions:
   - admonition

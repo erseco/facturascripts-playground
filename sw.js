@@ -53,7 +53,6 @@ async function distCacheFirst(request) {
 const STATIC_PREFIXES = [
   "/assets/",
   "/src/",
-  "/vendor/",
   "/php-worker.js",
   "/sw.js",
   "/remote.html",

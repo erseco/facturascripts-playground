@@ -1,7 +1,4 @@
 import { resolveBootstrapArchive } from "../../lib/facturascripts-loader.js";
-import { buildCoreExtractScript } from "./core-extract-script.js";
-
-const decoder = new TextDecoder();
 
 export async function mountReadonlyCore(
   php,
@@ -24,32 +21,39 @@ export async function mountReadonlyCore(
     archiveBytes = archive.bytes;
   }
 
-  // Extract the core with PHP's native ZipArchive instead of decompressing the
-  // whole archive in JS. libzip inflates + writes one entry at a time (fast at
-  // any file count, ~one-entry peak), avoiding both the fflate `unzipSync` heap
-  // OOM and the per-entry DecompressionStream overhead of `decodeZip` (which
-  // made boot exceed the readiness gate). Write the zip to MEMFS, run the
-  // extractor, then fail loud if ext/zip is missing or it errors — the install
-  // is not cached, so a reload retries (no JS fallback by design; ext/zip is
-  // always present since FacturaScripts uses ZipArchive via Plugins::add).
-  const tmpZip = "/tmp/facturascripts-core.zip";
-  const stage = "/tmp/facturascripts-core-stage";
+  // Extract the tar.zst core by streaming zstd decode + incremental USTAR
+  // parsing, writing each entry straight into MEMFS as it decodes (see
+  // lib/streaming-tar-extract.js). The uncompressed tar is never materialized —
+  // peak memory is bounded to roughly one file plus a decoded chunk — so this
+  // avoids the whole-archive `unzipSync` heap OOM and the per-entry
+  // DecompressionStream overhead of the old ZIP path, while working on Chrome and
+  // Firefox alike. The install is not cached, so a reload retries; any
+  // decode/parse error fails loud (no JS fallback by design).
   publish?.("Extracting FacturaScripts core…", 0.45);
-  await php.writeFile(tmpZip, archiveBytes);
-  // Drop the JS reference to the compressed buffer now that MEMFS has its own
-  // copy, so the GC can reclaim it while ZipArchive extracts.
+  const { createDecodedTarStream, extractTarStreamToPhp } = await import(
+    "../../lib/streaming-tar-extract.js"
+  );
+  const codec = manifest?.bundle?.codec ?? "zstd";
+  const stream = await createDecodedTarStream(archiveBytes, codec);
+  // Release our local reference to the compressed buffer. On the native
+  // DecompressionStream path this lets the GC reclaim it as the tar streams into
+  // MEMFS; on the zstddec fallback the decoder keeps its own reference until
+  // extraction finishes, so this is a no-op there.
   archiveBytes = null;
-  const result = await php.run(buildCoreExtractScript(tmpZip, stage, root));
-  const out = decoder.decode(result.bytes || new Uint8Array()).trim();
-  if (!out.startsWith("INSTALL_OK")) {
+  const stats = await extractTarStreamToPhp(stream, php, root);
+
+  // Parity tripwire: the streamed file count must match the manifest's, or the
+  // bundle was truncated / decoded wrong.
+  if (
+    manifest?.bundle?.fileCount &&
+    stats.fileCount !== manifest.bundle.fileCount
+  ) {
     throw new Error(
-      `FacturaScripts core extraction failed: ${out.slice(0, 200)} ` +
-        "(PHP ext/zip is required to mount the core).",
+      `core tar file-count parity mismatch: ${stats.fileCount} != ${manifest.bundle.fileCount}`,
     );
   }
-  const written = Number.parseInt(out.slice("INSTALL_OK".length).trim(), 10);
 
-  return { manifest, entries: written };
+  return { manifest, entries: stats.fileCount };
 }
 
 export async function fetchArrayBuffer(path, cache = "default") {

@@ -37,16 +37,49 @@ if [ -f "$FS_STAGE/package.json" ]; then
   fi
 fi
 
+# node_modules is served to the browser at runtime (Kernel routes /node_modules/*
+# to the Files controller and the layout templates load bootstrap/jquery/... from
+# it), so the bundle must keep it. But node_modules/.bin holds POSIX symlinks to
+# dev CLIs that are useless in the browser and that the files-only tar packer
+# would drop silently anyway — remove them. This is a no-op for the current
+# FacturaScripts frontend deps (none ship a bin) but guards CI machines whose
+# transitive deps do.
+rm -rf "$FS_STAGE/node_modules/.bin"
+
+# The files-only tar packer (build-tar-zst-bundle.mjs) never emits directory
+# entries — it rebuilds dirs from each file's parent path — so empty directories
+# are bundle-neutral. composer/npm can legitimately leave some (or removing .bin
+# above may empty a parent), so prune them (cascading, deepest-first) instead of
+# failing the build.
+find "$FS_STAGE" -depth -type d -empty -delete
+
+# Tripwire against the real data-loss risk: the packer walks regular files only
+# (isFile()) and never follows symlinks, so any symlink left in the stage vanishes
+# from the bundle with no trace, and the file-count parity check (regular files on
+# both sides) is blind to it. Fail loud instead.
+SYMLINKS=$(find "$FS_STAGE" -type l)
+if [ -n "$SYMLINKS" ]; then
+  echo "ERROR: staged tree has symlinks the tar packer would silently drop:" >&2
+  echo "$SYMLINKS" | sed 's/^/    /' >&2
+  exit 1
+fi
+
 SOURCE_COMMIT=$(git -C "$SOURCE_DIR" rev-parse HEAD)
 RELEASE=$(php -r 'preg_match("/function version\(\).*?return\s+([\d.]+)/s", file_get_contents("'"$FS_STAGE"'/Core/Kernel.php"), $m); echo $m[1] ?? "unknown";')
 SAFE_RELEASE=$(printf '%s' "$RELEASE" | sed 's/[^A-Za-z0-9._-]/_/g')
-BUNDLE_FILE="facturascripts-core-${SAFE_RELEASE}.zip"
+BUNDLE_FILE="facturascripts-core-${SAFE_RELEASE}.tar.zst"
 BUNDLE_PATH="$DIST_DIR/$BUNDLE_FILE"
 MANIFEST_PATH="$MANIFEST_DIR/latest.json"
-FILE_COUNT=$(find "$FS_STAGE" -type f | wc -l | tr -d ' ')
 
-echo "Creating ZIP bundle..." >&2
-(cd "$FS_STAGE" && zip -qr "$BUNDLE_PATH" .)
+# Pack the staged tree ($FS_STAGE holds the root-relative core) into a
+# deterministic, zstd-compressed tar. The browser runtime extracts it by
+# streaming zstd decode + incremental USTAR parsing (see
+# lib/streaming-tar-extract.js), so no ZipArchive stage is needed at boot.
+# The helper prints the tar entry (file) count, which is the exact count the
+# streaming parser reports at boot — used for the manifest parity tripwire.
+# Requires Node >= 22.15 for native node:zlib zstd.
+echo "Creating tar.zst bundle..." >&2
+FILE_COUNT=$(node "$SCRIPT_DIR/build-tar-zst-bundle.mjs" "$FS_STAGE" "$BUNDLE_PATH")
 echo "Bundle created: $BUNDLE_PATH ($FILE_COUNT files)" >&2
 
 node "$SCRIPT_DIR/generate-manifest.mjs" \
