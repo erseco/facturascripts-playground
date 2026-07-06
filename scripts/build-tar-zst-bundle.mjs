@@ -44,6 +44,14 @@ function walk(dir, base, map) {
 const fileMap = {};
 walk(stageDir, stageDir, fileMap);
 const entries = normalizeEntries(fileMap);
+// fileCount stays files-only: it is captured as a bare integer on stdout by
+// build-facturascripts-bundle.sh, fed to the manifest, and the runtime tripwire
+// (src/runtime/vfs.js: stats.fileCount vs manifest.bundle.fileCount) counts files
+// only — inflating it with directory entries would make the boot parity check
+// throw. Preserved empty directories (this caller walks regular files only, so
+// normally none) are reported separately as dirCount.
+const fileCount = entries.reduce((n, e) => n + (e.type === "dir" ? 0 : 1), 0);
+const dirCount = entries.length - fileCount;
 const tar = createUstarTar(entries, { mtime: 0 });
 const compressed = zlib.zstdCompressSync(tar, {
   params: {
@@ -56,4 +64,7 @@ const compressed = zlib.zstdCompressSync(tar, {
   },
 });
 writeFileSync(outFile, compressed);
-console.log(entries.length);
+// stdout stays a bare files-only integer (the shell captures it as FILE_COUNT);
+// dirCount goes to stderr as informational so it never pollutes that value.
+if (dirCount > 0) console.error(`Preserved ${dirCount} empty directories.`);
+console.log(fileCount);
