@@ -50,16 +50,22 @@ export function createPhpRuntime(
 ) {
   const resolvedPhpVersion = phpVersion || DEFAULT_PHP_VERSION;
   let wrapped = null;
+  let persistenceController = null;
 
   const deferred = {
     async refresh() {
       const resolvedCorsProxyUrl = corsProxyUrl ?? phpCorsProxyUrl ?? null;
       const tcpOverFetch = await getTcpOverFetchOptions(resolvedCorsProxyUrl);
       const runtimeId = await loadWebRuntime(resolvedPhpVersion, {
+        emscriptenOptions: {
+          INITIAL_MEMORY: 128 * 1024 * 1024,
+          ALLOW_MEMORY_GROWTH: 1,
+        },
         tcpOverFetch,
       });
       const php = new PHP(runtimeId);
       const FS = php[__private__dont__use].FS;
+      persistenceController = null;
 
       try {
         FS.mkdirTree(TEMP_ROOT);
@@ -90,7 +96,11 @@ export function createPhpRuntime(
           await clearJournal(scopeId);
           await clearOpcacheJournal(resolvedPhpVersion);
         }
-        await initFsPersistence(php, scopeId, resolvedPhpVersion);
+        persistenceController = await initFsPersistence(
+          php,
+          scopeId,
+          resolvedPhpVersion,
+        );
       }
 
       // The default auto_prepend_file at /internal/shared/auto_prepend_file.php
@@ -113,11 +123,12 @@ export function createPhpRuntime(
         // in-memory cache with a higher file limit and no timestamp checks
         // (the readonly bundle never changes within a session).
         "opcache.enable": "1",
+        "opcache.jit": "0",
         "opcache.file_cache": "/internal/shared/opcache",
         "opcache.file_cache_only": "1",
         "opcache.max_accelerated_files": "10000",
-        "opcache.memory_consumption": "128",
-        "opcache.interned_strings_buffer": "32",
+        "opcache.memory_consumption": "96",
+        "opcache.interned_strings_buffer": "16",
         "opcache.validate_timestamps": "0",
         "opcache.file_cache_consistency_checks": "0",
       });
@@ -173,8 +184,34 @@ export function createPhpRuntime(
     async run() {
       throw new Error("PHP runtime not initialized. Call refresh() first.");
     },
+    async flushPersistence() {
+      return {
+        enabled: false,
+        ok: true,
+        flushedOps: 0,
+        hydratedBytes: 0,
+        estimatedBytes: 0,
+      };
+    },
     addEventListener() {},
     removeEventListener() {},
+  };
+
+  deferred.flushPersistence = async (options = {}) => {
+    if (!persistenceController) {
+      return {
+        enabled: false,
+        ok: true,
+        flushedOps: 0,
+        hydratedBytes: 0,
+        estimatedBytes: 0,
+      };
+    }
+
+    return {
+      enabled: true,
+      ...(await persistenceController.flushNow(options)),
+    };
   };
 
   return deferred;

@@ -302,6 +302,15 @@ export async function bootstrapFacturaScripts({
     `max_execution_time = 0`,
     `display_errors = ${config.debug?.enabled ? "On" : "Off"}`,
     `error_reporting = E_ALL`,
+    `opcache.enable = 1`,
+    `opcache.jit = 0`,
+    `opcache.file_cache = /internal/shared/opcache`,
+    `opcache.file_cache_only = 1`,
+    `opcache.max_accelerated_files = 10000`,
+    `opcache.memory_consumption = 96`,
+    `opcache.interned_strings_buffer = 16`,
+    `opcache.validate_timestamps = 0`,
+    `opcache.file_cache_consistency_checks = 0`,
     "",
   ].join("\n");
   await php.writeFile("/php.ini", encoder.encode(phpIniContent));

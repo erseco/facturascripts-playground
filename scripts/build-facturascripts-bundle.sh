@@ -37,6 +37,17 @@ if [ -f "$FS_STAGE/package.json" ]; then
   fi
 fi
 
+# Additional low-risk metadata and static-analysis config files that are never
+# used by the in-browser runtime.
+find "$FS_STAGE" \
+  \( -name '.editorconfig' \
+  -o -name 'psalm.xml' -o -name 'psalm.xml.dist' \
+  -o -name 'phpstan.neon' -o -name 'phpstan.neon.dist' \
+  -o -name '.phpcs.xml' -o -name '.phpcs.xml.dist' \
+  -o -name 'phpcs.xml' -o -name 'phpcs.xml.dist' \) \
+  -delete
+find "$FS_STAGE" -path '*/.github/workflows/*' -delete
+
 # node_modules is served to the browser at runtime (Kernel routes /node_modules/*
 # to the Files controller and the layout templates load bootstrap/jquery/... from
 # it), so the bundle must keep it. But node_modules/.bin holds POSIX symlinks to
@@ -80,6 +91,10 @@ MANIFEST_PATH="$MANIFEST_DIR/latest.json"
 # Requires Node >= 22.15 for native node:zlib zstd.
 echo "Creating tar.zst bundle..." >&2
 FILE_COUNT=$(node "$SCRIPT_DIR/build-tar-zst-bundle.mjs" "$FS_STAGE" "$BUNDLE_PATH")
+if [ ! -f "$BUNDLE_PATH" ]; then
+  echo "ERROR: expected tar.zst bundle was not produced: $BUNDLE_PATH" >&2
+  exit 1
+fi
 echo "Bundle created: $BUNDLE_PATH ($FILE_COUNT files)" >&2
 
 node "$SCRIPT_DIR/generate-manifest.mjs" \
