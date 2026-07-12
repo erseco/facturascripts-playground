@@ -132,7 +132,8 @@ export async function flushPendingOps({
     };
   }
 
-  pendingOps.splice(0, pendingOps.length, ...remainingOps);
+  pendingOps.length = 0;
+  pendingOps.push(...remainingOps);
   const normalizedOps = normalizeFilesystemOperations(selectedOps);
 
   let estimatedBytes = 0;

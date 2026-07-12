@@ -12,6 +12,8 @@ import { FS_ROOT, PLAYGROUND_DB_PATH } from "./bootstrap-paths.js";
 
 const PERSIST_CHECKPOINT_PATH = "/persist/mutable";
 const MYFILES_PATH = `${FS_ROOT}/MyFiles`;
+// Log/Tmp are runtime-generated cache/log folders. Recreating them empty on boot
+// is cheaper and safer than pinning crash recovery to transient files.
 const MYFILES_EPHEMERAL_PREFIXES = [
   `${MYFILES_PATH}/Log`,
   `${MYFILES_PATH}/Tmp`,
