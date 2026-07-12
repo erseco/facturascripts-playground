@@ -8,15 +8,14 @@
  *   - Pending /persist/mutable journal changes are checkpointed before the DB snapshot.
  */
 
-import { FS_ROOT, PLAYGROUND_DB_PATH } from "./bootstrap-paths.js";
+import { FS_MYFILES_PATH, PLAYGROUND_DB_PATH } from "./bootstrap-paths.js";
 
 const PERSIST_CHECKPOINT_PATH = "/persist/mutable";
-const MYFILES_PATH = `${FS_ROOT}/MyFiles`;
 // Log/Tmp are runtime-generated cache/log folders. Recreating them empty on boot
 // is cheaper and safer than pinning crash recovery to transient files.
 const MYFILES_EPHEMERAL_PREFIXES = [
-  `${MYFILES_PATH}/Log`,
-  `${MYFILES_PATH}/Tmp`,
+  `${FS_MYFILES_PATH}/Log`,
+  `${FS_MYFILES_PATH}/Tmp`,
 ];
 const DEFAULT_MAX_CRASH_CHECKPOINT_BYTES = 16 * 1024 * 1024;
 
@@ -83,7 +82,7 @@ export function formatErrorDetail(error) {
   }
 }
 
-function formatKB(bytes) {
+function bytesToKB(bytes) {
   return Math.round((bytes || 0) / 1024);
 }
 
@@ -211,7 +210,7 @@ export function createSnapshotManager({
           if (!result.ok) {
             const sizeDetail =
               result.reason === "size-limit"
-                ? ` (${formatKB(result.estimatedBytes)}KB exceeds ${formatKB(maxCrashCheckpointBytes)}KB limit)`
+                ? ` (${bytesToKB(result.estimatedBytes)}KB exceeds ${bytesToKB(maxCrashCheckpointBytes)}KB limit)`
                 : "";
             postShell({
               kind: "error",
@@ -222,7 +221,7 @@ export function createSnapshotManager({
 
           postShell({
             kind: "trace",
-            detail: `[snapshot] checkpointed ${result.flushedOps || 0} pending mutable ops (${formatKB(result.hydratedBytes)}KB)`,
+            detail: `[snapshot] checkpointed ${result.flushedOps || 0} pending mutable ops (${bytesToKB(result.hydratedBytes)}KB)`,
           });
           return { ok: true, mode: "journal" };
         }
@@ -266,14 +265,14 @@ export function createSnapshotManager({
     if (fallback.exceeded) {
       postShell({
         kind: "error",
-        detail: `[snapshot] bounded mutable-state fallback exceeds ${formatKB(maxCrashCheckpointBytes)}KB; skipping live snapshot`,
+        detail: `[snapshot] bounded mutable-state fallback exceeds ${bytesToKB(maxCrashCheckpointBytes)}KB; skipping live snapshot`,
       });
       return { ok: false, mode: "fallback", reason: "size-limit" };
     }
 
     postShell({
       kind: "trace",
-      detail: `[snapshot] saved bounded mutable-state fallback (${fallback.files.length} entries, ${formatKB(fallback.totalBytes)}KB)`,
+      detail: `[snapshot] saved bounded mutable-state fallback (${fallback.files.length} entries, ${bytesToKB(fallback.totalBytes)}KB)`,
     });
     return { ok: true, mode: "fallback", files: fallback.files };
   }
@@ -289,7 +288,7 @@ export function createSnapshotManager({
     let hasMyFiles = false;
     try {
       hasMyFiles =
-        rawPhp.fileExists(MYFILES_PATH) && rawPhp.isDir(MYFILES_PATH);
+        rawPhp.fileExists(FS_MYFILES_PATH) && rawPhp.isDir(FS_MYFILES_PATH);
     } catch {
       return { ok: true, mode: "fallback", files: [] };
     }
@@ -300,7 +299,7 @@ export function createSnapshotManager({
 
     const fallback = collectFilesBounded(
       rawPhp,
-      MYFILES_PATH,
+      FS_MYFILES_PATH,
       maxCrashCheckpointBytes,
       {
         skip: (path) =>
@@ -312,14 +311,14 @@ export function createSnapshotManager({
     if (fallback.exceeded) {
       postShell({
         kind: "error",
-        detail: `[snapshot] bounded MyFiles checkpoint exceeds ${formatKB(maxCrashCheckpointBytes)}KB; skipping live snapshot`,
+        detail: `[snapshot] bounded MyFiles checkpoint exceeds ${bytesToKB(maxCrashCheckpointBytes)}KB; skipping live snapshot`,
       });
       return { ok: false, mode: "fallback", reason: "size-limit" };
     }
 
     postShell({
       kind: "trace",
-      detail: `[snapshot] saved bounded MyFiles checkpoint (${fallback.files.length} entries, ${formatKB(fallback.totalBytes)}KB)`,
+      detail: `[snapshot] saved bounded MyFiles checkpoint (${fallback.files.length} entries, ${bytesToKB(fallback.totalBytes)}KB)`,
     });
     return { ok: true, mode: "fallback", files: fallback.files };
   }

@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { FS_ROOT, PLAYGROUND_DB_PATH } from "../src/runtime/bootstrap-paths.js";
+import {
+  FS_MYFILES_PATH,
+  PLAYGROUND_DB_PATH,
+} from "../src/runtime/bootstrap-paths.js";
 import { createSnapshotManager } from "../src/runtime/crash-recovery.js";
-
-const MYFILES_PATH = `${FS_ROOT}/MyFiles`;
 
 function createMessages() {
   const messages = [];
@@ -27,7 +28,7 @@ test("snapshot manager flushes pending mutable-state ops before reading the DB",
     {
       _php: {
         fileExists(path) {
-          return path !== MYFILES_PATH;
+          return path !== FS_MYFILES_PATH;
         },
         isDir(path) {
           return path !== PLAYGROUND_DB_PATH;
@@ -105,7 +106,7 @@ test("snapshot manager does not capture a newer DB when the mutable checkpoint f
 
 test("snapshot manager restores a bounded MyFiles fallback when persistence is unavailable", async () => {
   const { postShell } = createMessages();
-  const uploadPath = `${MYFILES_PATH}/Docs/manual.pdf`;
+  const uploadPath = `${FS_MYFILES_PATH}/Docs/manual.pdf`;
   const snapshot = createSnapshotManager({
     postShell,
     maxCrashCheckpointBytes: 1024,
@@ -115,14 +116,14 @@ test("snapshot manager restores a bounded MyFiles fallback when persistence is u
     {
       _php: {
         fileExists(path) {
-          return path === MYFILES_PATH;
+          return path === FS_MYFILES_PATH;
         },
         isDir(path) {
-          return path === MYFILES_PATH || path === `${MYFILES_PATH}/Docs`;
+          return path === FS_MYFILES_PATH || path === `${FS_MYFILES_PATH}/Docs`;
         },
         listFiles(path) {
-          if (path === MYFILES_PATH) return [`${MYFILES_PATH}/Docs`];
-          if (path === `${MYFILES_PATH}/Docs`) return [uploadPath];
+          if (path === FS_MYFILES_PATH) return [`${FS_MYFILES_PATH}/Docs`];
+          if (path === `${FS_MYFILES_PATH}/Docs`) return [uploadPath];
           return [];
         },
         readFileAsBuffer(path) {
@@ -162,7 +163,7 @@ test("snapshot manager restores a bounded MyFiles fallback when persistence is u
 
 test("snapshot manager abandons the live snapshot when MyFiles exceeds the bounded fallback limit", async () => {
   const { postShell } = createMessages();
-  const uploadPath = `${MYFILES_PATH}/large.bin`;
+  const uploadPath = `${FS_MYFILES_PATH}/large.bin`;
   let dbReads = 0;
   const snapshot = createSnapshotManager({
     postShell,
@@ -173,10 +174,10 @@ test("snapshot manager abandons the live snapshot when MyFiles exceeds the bound
     {
       _php: {
         fileExists(path) {
-          return path === MYFILES_PATH;
+          return path === FS_MYFILES_PATH;
         },
         isDir(path) {
-          return path === MYFILES_PATH;
+          return path === FS_MYFILES_PATH;
         },
         listFiles() {
           return [uploadPath];
