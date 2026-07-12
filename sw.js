@@ -20,7 +20,8 @@ const clientContexts = new Map();
 // Static assets served via PHP are cached after the first request to avoid
 // re-queuing them through the serial PHP worker on every page navigation.
 const STATIC_ASSET_CACHE = "fs-static-assets-v1";
-const STATIC_ASSET_RE = /\.(css|js|woff2?|ttf|otf|eot|png|jpg|jpeg|gif|svg|ico|webp|map)$/iu;
+const STATIC_ASSET_RE =
+  /\.(css|js|mjs|woff2?|ttf|otf|eot|png|jpg|jpeg|gif|svg|ico|webp|map)$/iu;
 
 function isStaticAssetPath(requestPath) {
   return STATIC_ASSET_RE.test(requestPath.split("?")[0]);

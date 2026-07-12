@@ -5,10 +5,19 @@
  *   - Reactive rotation detects fatal errors and discards the runtime.
  *   - Idempotent requests (GET/HEAD) are replayed once on a fresh runtime.
  *   - Non-idempotent requests are NOT replayed to avoid side-effects.
- *   - DB snapshot preserves session state across restarts.
+ *   - Pending /persist/mutable journal changes are checkpointed before the DB snapshot.
  */
 
-import { FS_ROOT, PLAYGROUND_DB_PATH } from "./bootstrap.js";
+import { FS_MYFILES_PATH, PLAYGROUND_DB_PATH } from "./bootstrap-paths.js";
+
+const PERSIST_CHECKPOINT_PATH = "/persist/mutable";
+// Log/Tmp are runtime-generated cache/log folders. Recreating them empty on boot
+// is cheaper and safer than pinning crash recovery to transient files.
+const MYFILES_EPHEMERAL_PREFIXES = [
+  `${FS_MYFILES_PATH}/Log`,
+  `${FS_MYFILES_PATH}/Tmp`,
+];
+const DEFAULT_MAX_CRASH_CHECKPOINT_BYTES = 16 * 1024 * 1024;
 
 /**
  * Detect Emscripten errno 23 (EHOSTUNREACH).  In WASM, outbound curl
@@ -73,18 +82,26 @@ export function formatErrorDetail(error) {
   }
 }
 
-/**
- * Create a state snapshot manager for crash recovery.
- *
- * Before destroying the crashed runtime, read the DB file and addon files
- * from MEMFS (JS heap — works even with corrupted WASM linear memory).
- * After bootstrapping a fresh runtime, restore them.
- */
-export function createSnapshotManager({ postShell }) {
+function bytesToKB(bytes) {
+  return Math.round((bytes || 0) / 1024);
+}
+
+export function createSnapshotManager({
+  postShell,
+  maxCrashCheckpointBytes = DEFAULT_MAX_CRASH_CHECKPOINT_BYTES,
+}) {
   let savedDbSnapshot = null;
   let savedAddonFiles = null;
-  let savedUploadFiles = null;
+  let savedPersistFiles = null;
+  let savedMyFiles = null;
   const installedAddonDirs = new Set();
+
+  function clearSavedState() {
+    savedDbSnapshot = null;
+    savedAddonFiles = null;
+    savedPersistFiles = null;
+    savedMyFiles = null;
+  }
 
   function restoreFiles(rawPhp, files) {
     let ok = 0;
@@ -135,36 +152,232 @@ export function createSnapshotManager({ postShell }) {
     return files;
   }
 
+  function collectFilesBounded(
+    rawPhp,
+    dirPath,
+    maxBytes,
+    { skip = null } = {},
+  ) {
+    const files = [];
+    let totalBytes = 0;
+    let exceeded = false;
+
+    const visit = (path) => {
+      if (exceeded || skip?.(path)) return;
+
+      let entries;
+      try {
+        entries = rawPhp.listFiles(path, { prependPath: true });
+      } catch {
+        return;
+      }
+
+      for (const entry of entries) {
+        if (exceeded || skip?.(entry)) return;
+        if (rawPhp.isDir(entry)) {
+          visit(entry);
+          continue;
+        }
+
+        try {
+          const data = new Uint8Array(rawPhp.readFileAsBuffer(entry));
+          if (totalBytes + data.byteLength > maxBytes) {
+            exceeded = true;
+            files.length = 0;
+            return;
+          }
+          totalBytes += data.byteLength;
+          files.push({ path: entry, data });
+        } catch {
+          // Unreadable file — skip
+        }
+      }
+    };
+
+    visit(dirPath);
+    return { exceeded, files, totalBytes };
+  }
+
+  async function preparePersistCheckpoint(php, rawPhp) {
+    if (typeof php.flushPersistence === "function") {
+      try {
+        const result = await php.flushPersistence({
+          pathPrefix: PERSIST_CHECKPOINT_PATH,
+          maxBytes: maxCrashCheckpointBytes,
+        });
+
+        if (result?.enabled) {
+          if (!result.ok) {
+            const sizeDetail =
+              result.reason === "size-limit"
+                ? ` (${bytesToKB(result.estimatedBytes)}KB exceeds ${bytesToKB(maxCrashCheckpointBytes)}KB limit)`
+                : "";
+            postShell({
+              kind: "error",
+              detail: `[snapshot] mutable-state checkpoint failed${sizeDetail}; using the last persisted checkpoint`,
+            });
+            return { ok: false, mode: "journal", reason: result.reason };
+          }
+
+          postShell({
+            kind: "trace",
+            detail: `[snapshot] checkpointed ${result.flushedOps || 0} pending mutable ops (${bytesToKB(result.hydratedBytes)}KB)`,
+          });
+          return { ok: true, mode: "journal" };
+        }
+      } catch (error) {
+        postShell({
+          kind: "error",
+          detail: `[snapshot] mutable-state checkpoint failed: ${error.message}; using the last persisted checkpoint`,
+        });
+        return { ok: false, mode: "journal", reason: "flush-failed" };
+      }
+    }
+
+    if (
+      typeof rawPhp?.fileExists !== "function" ||
+      typeof rawPhp?.isDir !== "function"
+    ) {
+      return { ok: true, mode: "fallback", files: [] };
+    }
+
+    let hasPersistRoot = false;
+    try {
+      hasPersistRoot =
+        rawPhp.fileExists(PERSIST_CHECKPOINT_PATH) &&
+        rawPhp.isDir(PERSIST_CHECKPOINT_PATH);
+    } catch {
+      return { ok: true, mode: "fallback", files: [] };
+    }
+
+    if (!hasPersistRoot) {
+      return { ok: true, mode: "fallback", files: [] };
+    }
+
+    const fallback = collectFilesBounded(
+      rawPhp,
+      PERSIST_CHECKPOINT_PATH,
+      maxCrashCheckpointBytes,
+      {
+        skip: (path) => path === PLAYGROUND_DB_PATH,
+      },
+    );
+    if (fallback.exceeded) {
+      postShell({
+        kind: "error",
+        detail: `[snapshot] bounded mutable-state fallback exceeds ${bytesToKB(maxCrashCheckpointBytes)}KB; skipping live snapshot`,
+      });
+      return { ok: false, mode: "fallback", reason: "size-limit" };
+    }
+
+    postShell({
+      kind: "trace",
+      detail: `[snapshot] saved bounded mutable-state fallback (${fallback.files.length} entries, ${bytesToKB(fallback.totalBytes)}KB)`,
+    });
+    return { ok: true, mode: "fallback", files: fallback.files };
+  }
+
+  function prepareMyFilesCheckpoint(rawPhp) {
+    if (
+      typeof rawPhp?.fileExists !== "function" ||
+      typeof rawPhp?.isDir !== "function"
+    ) {
+      return { ok: true, mode: "fallback", files: [] };
+    }
+
+    let hasMyFiles = false;
+    try {
+      hasMyFiles =
+        rawPhp.fileExists(FS_MYFILES_PATH) && rawPhp.isDir(FS_MYFILES_PATH);
+    } catch {
+      return { ok: true, mode: "fallback", files: [] };
+    }
+
+    if (!hasMyFiles) {
+      return { ok: true, mode: "fallback", files: [] };
+    }
+
+    const fallback = collectFilesBounded(
+      rawPhp,
+      FS_MYFILES_PATH,
+      maxCrashCheckpointBytes,
+      {
+        skip: (path) =>
+          MYFILES_EPHEMERAL_PREFIXES.some(
+            (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+          ),
+      },
+    );
+    if (fallback.exceeded) {
+      postShell({
+        kind: "error",
+        detail: `[snapshot] bounded MyFiles checkpoint exceeds ${bytesToKB(maxCrashCheckpointBytes)}KB; skipping live snapshot`,
+      });
+      return { ok: false, mode: "fallback", reason: "size-limit" };
+    }
+
+    postShell({
+      kind: "trace",
+      detail: `[snapshot] saved bounded MyFiles checkpoint (${fallback.files.length} entries, ${bytesToKB(fallback.totalBytes)}KB)`,
+    });
+    return { ok: true, mode: "fallback", files: fallback.files };
+  }
+
   return {
-    /**
-     * Read the DB file and addon directories from the (possibly crashed)
-     * runtime before it is destroyed.
-     */
     async hydrate(php, dbPath) {
+      clearSavedState();
       const rawPhp = php._php;
       const effectiveDbPath = dbPath || PLAYGROUND_DB_PATH;
 
-      // 1. Save the DB file
-      try {
-        const data = rawPhp.readFileAsBuffer(effectiveDbPath);
-        if (data && data.byteLength > 0) {
-          savedDbSnapshot = {
-            path: effectiveDbPath,
-            data: new Uint8Array(data),
-          };
-          postShell({
-            kind: "trace",
-            detail: `[snapshot] saved DB (${data.byteLength} bytes)`,
-          });
-        }
-      } catch (err) {
-        postShell({
-          kind: "error",
-          detail: `[snapshot] failed to read DB: ${err.message}`,
-        });
+      const persistCheckpoint = await preparePersistCheckpoint(php, rawPhp);
+      if (!persistCheckpoint.ok) {
+        return {
+          captured: false,
+          reason: persistCheckpoint.reason || "persist-checkpoint-failed",
+        };
       }
 
-      // 2. Save files from addon directories installed during this session
+      const myFilesCheckpoint = prepareMyFilesCheckpoint(rawPhp);
+      if (!myFilesCheckpoint.ok) {
+        clearSavedState();
+        return {
+          captured: false,
+          reason: myFilesCheckpoint.reason || "myfiles-checkpoint-failed",
+        };
+      }
+
+      if (
+        persistCheckpoint.mode === "fallback" &&
+        persistCheckpoint.files.length > 0
+      ) {
+        savedPersistFiles = persistCheckpoint.files;
+      }
+      if (myFilesCheckpoint.files.length > 0) {
+        savedMyFiles = myFilesCheckpoint.files;
+      }
+
+      try {
+        const data = rawPhp.readFileAsBuffer(effectiveDbPath);
+        if (!data || data.byteLength === 0) {
+          throw new Error("DB snapshot is empty");
+        }
+        savedDbSnapshot = {
+          path: effectiveDbPath,
+          data: new Uint8Array(data),
+        };
+        postShell({
+          kind: "trace",
+          detail: `[snapshot] saved DB (${data.byteLength} bytes)`,
+        });
+      } catch (err) {
+        clearSavedState();
+        postShell({
+          kind: "error",
+          detail: `[snapshot] failed to read DB: ${err.message}; using the last persisted checkpoint`,
+        });
+        return { captured: false, reason: "db-read-failed" };
+      }
+
       if (installedAddonDirs.size > 0) {
         const allFiles = [];
         for (const dir of installedAddonDirs) {
@@ -190,36 +403,37 @@ export function createSnapshotManager({ postShell }) {
         }
       }
 
-      // 3. Save uploaded files
-      try {
-        if (rawPhp.fileExists(FS_ROOT) && rawPhp.isDir(FS_ROOT)) {
-          const files = collectFiles(rawPhp, FS_ROOT);
-          if (files.length > 0) {
-            savedUploadFiles = files;
-            postShell({
-              kind: "trace",
-              detail: `[snapshot] saved ${files.length} upload files`,
-            });
-          }
-        }
-      } catch (err) {
-        postShell({
-          kind: "error",
-          detail: `[snapshot] failed to read uploads: ${err.message}`,
-        });
-      }
+      return {
+        captured: true,
+        persistMode: persistCheckpoint.mode,
+        myFilesMode: myFilesCheckpoint.mode,
+      };
     },
 
-    /**
-     * Restore the saved DB and addon files onto a fresh runtime.
-     */
     async restore(php) {
-      if (!savedDbSnapshot && !savedAddonFiles && !savedUploadFiles) {
+      if (
+        !savedDbSnapshot &&
+        !savedAddonFiles &&
+        !savedPersistFiles &&
+        !savedMyFiles
+      ) {
         return { restored: false, addonsRestored: false };
       }
       const rawPhp = php._php;
       let restored = false;
       let addonsRestored = false;
+
+      if (savedPersistFiles) {
+        const { ok, failed } = restoreFiles(rawPhp, savedPersistFiles);
+        postShell({
+          kind: "trace",
+          detail: `[snapshot] restored ${ok} mutable-state fallback files${failed > 0 ? ` (${failed} failed)` : ""}`,
+        });
+        if (ok > 0) {
+          restored = true;
+        }
+        savedPersistFiles = null;
+      }
 
       if (savedDbSnapshot) {
         try {
@@ -251,16 +465,16 @@ export function createSnapshotManager({ postShell }) {
         savedAddonFiles = null;
       }
 
-      if (savedUploadFiles) {
-        const { ok, failed } = restoreFiles(rawPhp, savedUploadFiles);
+      if (savedMyFiles) {
+        const { ok, failed } = restoreFiles(rawPhp, savedMyFiles);
         postShell({
           kind: "trace",
-          detail: `[snapshot] restored ${ok} upload files${failed > 0 ? ` (${failed} failed)` : ""}`,
+          detail: `[snapshot] restored ${ok} MyFiles checkpoint files${failed > 0 ? ` (${failed} failed)` : ""}`,
         });
         if (ok > 0) {
           restored = true;
         }
-        savedUploadFiles = null;
+        savedMyFiles = null;
       }
 
       return { restored, addonsRestored };
@@ -270,7 +484,8 @@ export function createSnapshotManager({ postShell }) {
       return (
         savedDbSnapshot !== null ||
         savedAddonFiles !== null ||
-        savedUploadFiles !== null
+        savedPersistFiles !== null ||
+        savedMyFiles !== null
       );
     },
 
@@ -283,9 +498,7 @@ export function createSnapshotManager({ postShell }) {
     },
 
     clear() {
-      savedDbSnapshot = null;
-      savedAddonFiles = null;
-      savedUploadFiles = null;
+      clearSavedState();
     },
   };
 }

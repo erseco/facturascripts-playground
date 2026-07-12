@@ -6,6 +6,36 @@ are the way they are and avoid re-investigating solved problems.
 
 ---
 
+## Selective persistence checkpoints and runtime tuning
+
+**Date:** 2026-07-12
+**Context:** Ported the crash-checkpoint and runtime-memory optimizations from the sibling Moodle playground, adapted to FacturaScripts paths and persistence model.
+
+### What changed
+
+- `fs-persistence.js` now supports selective flushing (`flushPendingOps`, `flushNow()`, `operationTouchesPathPrefix()`) with bounded preflight size checks before hydrating writes.
+- `php-loader.js` exposes `php.flushPersistence()` to crash recovery and lowers WASM/OPcache memory overhead (`INITIAL_MEMORY=128MiB`, `ALLOW_MEMORY_GROWTH=1`, `opcache.jit=0`, `opcache.memory_consumption=96`, `opcache.interned_strings_buffer=16`).
+- `crash-recovery.js` now treats `/persist/mutable` as the journal-backed mutable checkpoint for FacturaScripts, captures a bounded `MyFiles` fallback (excluding `Tmp` and `Log`), and refuses to pair a newer SQLite DB with an older mutable checkpoint.
+- `php-worker.js` emits a high-watermark diagnostic after 1500 served requests so long-lived tabs can be reset proactively.
+- `sw.js` extends the static-asset cache fast path to `.mjs` modules.
+- `scripts/build-facturascripts-bundle.sh` trims extra non-runtime metadata/config files and explicitly fails if the final `tar.zst` bundle is missing.
+
+### Why `/persist/mutable`
+
+Moodle keeps file content under `/persist/moodledata/filedir`, so selective crash checkpoints can flush only that subtree before snapshotting the SQLite DB. FacturaScripts instead journals its mutable DB/config/session state under `/persist/mutable`, while plugin code and user files live under `/www/facturascripts/*`.
+
+For this playground, the coherent crash checkpoint is therefore:
+
+1. flush pending `/persist/mutable` journal ops into IndexedDB;
+2. capture a bounded fallback copy of `MyFiles` (excluding cache/log folders) because those files are outside the journal;
+3. capture the SQLite DB only if both steps succeed.
+
+This avoids pairing a newer DB with older mutable files while still keeping crash-time memory bounded to 16 MiB for the extra fallback copy.
+
+**Files:** `src/runtime/fs-persistence.js`, `src/runtime/php-loader.js`, `src/runtime/crash-recovery.js`, `php-worker.js`, `sw.js`, `scripts/build-facturascripts-bundle.sh`, `tests/fs-persistence.test.mjs`, `tests/crash-recovery.test.mjs`
+
+---
+
 ## Migration from php-cgi-wasm to @php-wasm/web
 
 **Date:** 2026-03-26
