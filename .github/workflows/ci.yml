@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           # Node 24 (LTS) provides native node:zlib zstd (>= 22.15). The e2e
           # webServer runs `make up` (build-tar-zst-bundle.mjs) when no bundle is
