@@ -21,21 +21,34 @@ rm -rf "$FS_STAGE/.git" "$FS_STAGE/.github" "$FS_STAGE/tests" "$FS_STAGE/Test"
 # commit. ModelClass is intentionally excluded: supported releases already
 # contain their own length validation and that hunk differs between channels.
 if [ -n "${FS_VERSION:-}" ]; then
+  SQLITE_COMMIT="14f07e6f2d7ebdace161e5383122011a73d6378c"
   curl --fail --location --silent --show-error \
-    "https://github.com/erseco/facturascripts/commit/14f07e6f2d7ebdace161e5383122011a73d6378c.diff" \
+    "https://github.com/erseco/facturascripts/commit/$SQLITE_COMMIT.diff" \
     --output "$WORK_DIR/sqlite-support.diff"
   (
     cd "$FS_STAGE"
-    git apply --check --exclude='Core/Template/ModelClass.php' \
+    git apply --check \
+      --exclude='Core/Template/ModelClass.php' \
+      --exclude='Core/Base/DataBase/SqliteEngine.php' \
+      --exclude='Core/Base/DataBase/SqliteQueries.php' \
       --include='Core/**' "$WORK_DIR/sqlite-support.diff"
-    git apply --exclude='Core/Template/ModelClass.php' \
+    git apply \
+      --exclude='Core/Template/ModelClass.php' \
+      --exclude='Core/Base/DataBase/SqliteEngine.php' \
+      --exclude='Core/Base/DataBase/SqliteQueries.php' \
       --include='Core/**' "$WORK_DIR/sqlite-support.diff"
-    if [ ! -f Core/Base/DataBase/SqliteEngine.php ] || \
-      [ ! -f Core/Base/DataBase/SqliteQueries.php ]; then
-      echo "SQLite patch did not materialize the expected engine files:" >&2
-      find Core/Base/DataBase -maxdepth 1 -type f -print >&2
-      exit 1
-    fi
+
+    # git apply deliberately honours ignore rules for newly-created paths.
+    # Official archives ignore SQLite*.php, so materialize the two additions
+    # explicitly from the same immutable commit used by the patch above.
+    curl --fail --location --silent --show-error \
+      "https://raw.githubusercontent.com/erseco/facturascripts/$SQLITE_COMMIT/Core/Base/DataBase/SqliteEngine.php" \
+      --output Core/Base/DataBase/SqliteEngine.php
+    curl --fail --location --silent --show-error \
+      "https://raw.githubusercontent.com/erseco/facturascripts/$SQLITE_COMMIT/Core/Base/DataBase/SqliteQueries.php" \
+      --output Core/Base/DataBase/SqliteQueries.php
+    php -l Core/Base/DataBase/SqliteEngine.php >&2
+    php -l Core/Base/DataBase/SqliteQueries.php >&2
   )
 fi
 
