@@ -102,7 +102,10 @@ describe("buildWizardScript", () => {
   it("initializes core billing models (taxes, payment methods, series)", () => {
     const script = buildWizardScript(baseConfig);
     for (const model of ["Impuesto", "FormaPago", "Serie", "Ejercicio"]) {
-      assert.ok(script.includes(model), `Script should reference model ${model}`);
+      assert.ok(
+        script.includes(model),
+        `Script should reference model ${model}`,
+      );
     }
   });
 
