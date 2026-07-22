@@ -197,9 +197,14 @@ async function performAutologin(php, config, publish) {
  * runtime can extract it. The bundle is Cache-API backed, so a failed or
  * duplicated fetch is cheap.
  */
-export function startCoreArchivePrefetch({ onProgress } = {}) {
-  return fetchManifest().then((manifest) =>
-    resolveBootstrapArchive({ manifest }, onProgress),
+export function startCoreArchivePrefetch({
+  coreVersion = "",
+  manifest = null,
+  onProgress,
+} = {}) {
+  return Promise.resolve(manifest ?? fetchManifest(coreVersion)).then(
+    (resolvedManifest) =>
+      resolveBootstrapArchive({ manifest: resolvedManifest }, onProgress),
   );
 }
 
@@ -207,6 +212,7 @@ export async function bootstrapFacturaScripts({
   config: rawConfig,
   blueprint: rawBlueprint,
   clean,
+  coreVersion = "",
   corePrefetch = null,
   php,
   publish,
@@ -221,7 +227,7 @@ export async function bootstrapFacturaScripts({
   // Reuse the manifest + core bytes prefetched in parallel with php.refresh()
   // when available; otherwise fetch lazily.
   const prefetched = corePrefetch ? await corePrefetch : null;
-  const manifest = prefetched?.manifest ?? (await fetchManifest());
+  const manifest = prefetched?.manifest ?? (await fetchManifest(coreVersion));
   const manifestState = buildManifestState(
     manifest,
     runtimeId,

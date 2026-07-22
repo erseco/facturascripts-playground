@@ -1,7 +1,10 @@
 import { resolveProjectUrl } from "../shared/paths.js";
 
-export async function fetchManifest() {
-  const url = resolveProjectUrl("assets/manifests/latest.json");
+export async function fetchManifest(coreVersion = "") {
+  const manifestName = coreVersion
+    ? `${encodeURIComponent(coreVersion)}.json`
+    : "latest.json";
+  const url = resolveProjectUrl(`assets/manifests/${manifestName}`);
   const response = await fetch(url, { cache: "no-cache" });
   if (!response.ok) {
     throw new Error(

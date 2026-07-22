@@ -9,6 +9,7 @@ import {
   loadWebRuntime,
 } from "@php-wasm/web";
 import { FS_ROOT } from "./bootstrap.js";
+import { buildOpcacheKey } from "./fs-persistence.js";
 import { wrapPhpInstance } from "./php-compat.js";
 
 const PERSIST_ROOT = "/persist";
@@ -40,6 +41,7 @@ export function createPhpRuntime(
   _runtime,
   {
     appBaseUrl,
+    coreIdentity,
     phpVersion,
     webRoot,
     scopeId,
@@ -49,6 +51,7 @@ export function createPhpRuntime(
   } = {},
 ) {
   const resolvedPhpVersion = phpVersion || DEFAULT_PHP_VERSION;
+  const opcacheKey = buildOpcacheKey(resolvedPhpVersion, coreIdentity);
   let wrapped = null;
   let persistenceController = null;
 
@@ -94,12 +97,12 @@ export function createPhpRuntime(
         // reloads (a same-blueprint reload then reuses it, no reinstall).
         if (forceCleanBoot) {
           await clearJournal(scopeId);
-          await clearOpcacheJournal(resolvedPhpVersion);
+          await clearOpcacheJournal(opcacheKey);
         }
         persistenceController = await initFsPersistence(
           php,
           scopeId,
-          resolvedPhpVersion,
+          opcacheKey,
         );
       }
 

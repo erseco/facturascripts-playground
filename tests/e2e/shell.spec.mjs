@@ -1,6 +1,16 @@
+import { copyFile, rm } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 
 test.describe.configure({ timeout: 180_000 });
+
+const stableManifestFile = new URL(
+  "../../assets/manifests/2099.1.json",
+  import.meta.url,
+);
+
+test.afterEach(async () => {
+  await rm(stableManifestFile, { force: true });
+});
 
 function buildBlueprintData(overrides = {}) {
   const payload = {
@@ -102,6 +112,30 @@ test("loads blueprint overrides and exposes runtime settings", async ({
 test("info panel hosts the version config with a dirty-state apply", async ({
   page,
 }) => {
+  await copyFile(
+    new URL("../../assets/manifests/latest.json", import.meta.url),
+    stableManifestFile,
+  );
+  await page.route("**/assets/manifests/versions.json", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        default: "2099.1",
+        versions: [
+          {
+            version: "2099.1",
+            channels: ["stable"],
+            label: "2099.1 (Stable)",
+          },
+          {
+            version: "2099.2",
+            channels: ["beta"],
+            label: "2099.2 (Beta)",
+          },
+        ],
+      }),
+    }),
+  );
   await page.goto("/");
   await waitForRuntimeReady(page);
 
@@ -114,6 +148,7 @@ test("info panel hosts the version config with a dirty-state apply", async ({
 
   const phpOptions = await page.locator("#info-php-version option").count();
   expect(phpOptions).toBeGreaterThan(0);
+  await expect(page.locator("#info-core-version option")).toHaveCount(2);
 
   // Clean state: no Apply button and no destructive warning.
   await expect(page.locator("#config-apply")).toBeHidden();
@@ -137,6 +172,12 @@ test("info panel hosts the version config with a dirty-state apply", async ({
     await expect(page.locator("#config-apply")).toBeHidden();
     await expect(page.locator("#config-warning")).toBeHidden();
   }
+
+  await page.locator("#info-core-version").selectOption("2099.2");
+  await expect(page.locator("#config-apply")).toBeVisible();
+  await expect(page.locator("#config-warning")).toBeVisible();
+  await page.locator("#info-core-version").selectOption("2099.1");
+  await expect(page.locator("#config-apply")).toBeHidden();
 });
 
 test("persists /persist to IndexedDB and reboots from it on reload", async ({
