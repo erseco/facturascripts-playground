@@ -25,18 +25,20 @@ if [ -n "${FS_VERSION:-}" ]; then
   curl --fail --location --silent --show-error \
     "https://github.com/erseco/facturascripts/commit/$SQLITE_COMMIT.diff" \
     --output "$WORK_DIR/sqlite-support.diff"
+  awk '
+    /^diff --git / {
+      keep = ($3 == "a/Core/Base/DataBase.php" ||
+        $3 == "a/Core/Controller/Installer.php" ||
+        $3 == "a/Core/Lib/Import/CSVImport.php" ||
+        $3 == "a/Core/Model/AttachedFile.php" ||
+        $3 == "a/Core/View/Installer/Install.html.twig")
+    }
+    keep { print }
+  ' "$WORK_DIR/sqlite-support.diff" > "$WORK_DIR/sqlite-runtime.diff"
   (
     cd "$FS_STAGE"
-    git apply --check \
-      --exclude='Core/Template/ModelClass.php' \
-      --exclude='Core/Base/DataBase/SqliteEngine.php' \
-      --exclude='Core/Base/DataBase/SqliteQueries.php' \
-      --include='Core/**' "$WORK_DIR/sqlite-support.diff"
-    git apply \
-      --exclude='Core/Template/ModelClass.php' \
-      --exclude='Core/Base/DataBase/SqliteEngine.php' \
-      --exclude='Core/Base/DataBase/SqliteQueries.php' \
-      --include='Core/**' "$WORK_DIR/sqlite-support.diff"
+    git apply --check "$WORK_DIR/sqlite-runtime.diff"
+    git apply "$WORK_DIR/sqlite-runtime.diff"
 
     # git apply deliberately honours ignore rules for newly-created paths.
     # Official archives ignore SQLite*.php, so materialize the two additions
@@ -47,6 +49,8 @@ if [ -n "${FS_VERSION:-}" ]; then
     curl --fail --location --silent --show-error \
       "https://raw.githubusercontent.com/erseco/facturascripts/$SQLITE_COMMIT/Core/Base/DataBase/SqliteQueries.php" \
       --output Core/Base/DataBase/SqliteQueries.php
+    grep -Fq 'use FacturaScripts\Core\Base\DataBase\SqliteEngine;' Core/Base/DataBase.php
+    grep -Fq "case 'sqlite':" Core/Base/DataBase.php
     php -l Core/Base/DataBase/SqliteEngine.php >&2
     php -l Core/Base/DataBase/SqliteQueries.php >&2
   )
