@@ -2,10 +2,22 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  buildOpcacheKey,
   collapseAndHydrate,
   flushPendingOps,
+  opcacheDatabaseName,
   operationTouchesPathPrefix,
 } from "../src/runtime/fs-persistence.js";
+
+test("OPcache persistence is isolated by PHP and exact core identity", () => {
+  const stable = opcacheDatabaseName(buildOpcacheKey("8.5", "stable-sha"));
+  const beta = opcacheDatabaseName(buildOpcacheKey("8.5", "beta-sha"));
+  const olderPhp = opcacheDatabaseName(buildOpcacheKey("8.4", "stable-sha"));
+
+  assert.notEqual(stable, beta);
+  assert.notEqual(stable, olderPhp);
+  assert.equal(stable, "facturascripts-opcache:8.5:stable-sha");
+});
 
 // Regression guard for the journal-flush OOM: a heavy install rewrites the same
 // (multi-MB) SQLite DB hundreds of times within one debounce window. Hydrating

@@ -6,6 +6,27 @@ are the way they are and avoid re-investigating solved problems.
 
 ---
 
+## OPcache isolation across core versions
+
+**Date:** 2026-07-22
+**Context:** The version selector allows the same PHP runtime to boot different
+FacturaScripts cores whose classes and interfaces are not bytecode-compatible.
+
+### Decision
+
+- Persist OPcache under a key composed of the PHP version and the exact core
+  bundle SHA-256, rather than PHP version alone.
+- Resolve the small core manifest before compiling PHP, then keep the bundle
+  download parallel with runtime compilation as before.
+- A rebuilt bundle or a stable/beta switch therefore receives a clean bytecode
+  namespace while reloads of the exact same combination keep the OPcache speedup.
+
+**Files:** `php-worker.js`, `src/runtime/bootstrap.js`,
+`src/runtime/php-loader.js`, `src/runtime/fs-persistence.js`,
+`tests/fs-persistence.test.mjs`
+
+---
+
 ## Supported FacturaScripts release channels
 
 **Date:** 2026-07-22

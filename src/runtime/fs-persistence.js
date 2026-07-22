@@ -12,6 +12,14 @@ const DB_VERSION = 1;
 const STORE_NAME = "ops";
 const FLUSH_DELAY_MS = 1500;
 
+export function buildOpcacheKey(phpVersion, coreIdentity = "default") {
+  return `${phpVersion}:${coreIdentity || "default"}`;
+}
+
+export function opcacheDatabaseName(opcacheKey) {
+  return `${OPCACHE_DB_PREFIX}:${opcacheKey}`;
+}
+
 async function openDb(name) {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(name, DB_VERSION);
@@ -247,8 +255,8 @@ export async function clearJournal(scopeId) {
   await clearDb(`${PERSIST_DB_PREFIX}:${scopeId}`);
 }
 
-export async function clearOpcacheJournal(phpVersion) {
-  await clearDb(`${OPCACHE_DB_PREFIX}:${phpVersion}`);
+export async function clearOpcacheJournal(opcacheKey) {
+  await clearDb(opcacheDatabaseName(opcacheKey));
 }
 
 /**
@@ -280,15 +288,15 @@ function replayResilient(rawPhp, ops) {
  * journaling new changes back to IndexedDB.
  *
  * - /persist  → keyed by scopeId (per-session mutable data: DB, config, session)
- * - /internal/shared/opcache → keyed by phpVersion (cross-session OPcache persistence)
+ * - /internal/shared/opcache → keyed by PHP version + exact core identity
  *
  * Persisting OPcache means PHP only compiles each file once across reloads,
  * making the second and subsequent sessions dramatically faster.
  */
-export async function initFsPersistence(rawPhp, scopeId, phpVersion) {
+export async function initFsPersistence(rawPhp, scopeId, opcacheKey) {
   const persistDb = await openDb(`${PERSIST_DB_PREFIX}:${scopeId}`);
-  const opcacheDb = phpVersion
-    ? await openDb(`${OPCACHE_DB_PREFIX}:${phpVersion}`)
+  const opcacheDb = opcacheKey
+    ? await openDb(opcacheDatabaseName(opcacheKey))
     : null;
 
   const pendingPersistOps = [];

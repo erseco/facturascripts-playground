@@ -9,6 +9,7 @@ import {
   startCoreArchivePrefetch,
 } from "./src/runtime/bootstrap.js";
 import { createPhpRuntime } from "./src/runtime/php-loader.js";
+import { fetchManifest } from "./src/runtime/manifest.js";
 import {
   isEmscriptenNetworkError,
   isFatalWasmError,
@@ -128,16 +129,6 @@ async function getRuntimeState() {
     const runtime =
       config.runtimes.find((entry) => entry.id === runtimeId) ||
       config.runtimes[0];
-    const php = createPhpRuntime(runtime, {
-      appBaseUrl:
-        typeof __APP_ROOT__ !== "undefined"
-          ? __APP_ROOT__
-          : new URL("./", self.location.href).toString(),
-      phpVersion: runtime.phpVersion || runtime.phpVersionLabel,
-      scopeId,
-      forceCleanBoot,
-      phpCorsProxyUrl: config.phpCorsProxyUrl || null,
-    });
 
     // Monotonic progress: the parallel core download and the bootstrap steps
     // interleave, so clamp the reported progress so the bar never goes backward.
@@ -149,10 +140,34 @@ async function getRuntimeState() {
       postShell({ kind: "progress", title, detail, progress: maxProgress });
     };
 
+    publishProgress(
+      "Loading FacturaScripts manifest",
+      `Resolving FacturaScripts ${coreVersion || "latest"}.`,
+      0.08,
+    );
+    const coreManifest = await fetchManifest(coreVersion);
+    const coreIdentity =
+      coreManifest.bundle?.sha256 ||
+      coreManifest.release ||
+      coreVersion ||
+      "latest";
+    const php = createPhpRuntime(runtime, {
+      appBaseUrl:
+        typeof __APP_ROOT__ !== "undefined"
+          ? __APP_ROOT__
+          : new URL("./", self.location.href).toString(),
+      coreIdentity,
+      phpVersion: runtime.phpVersion || runtime.phpVersionLabel,
+      scopeId,
+      forceCleanBoot,
+      phpCorsProxyUrl: config.phpCorsProxyUrl || null,
+    });
+
     // Parallel boot: start downloading the readonly-core manifest + bundle now
     // so the fetch overlaps the WASM runtime compile in php.refresh().
     const corePrefetch = startCoreArchivePrefetch({
       coreVersion,
+      manifest: coreManifest,
       onProgress: (p) => {
         if (p?.ratio !== undefined) {
           publishProgress(

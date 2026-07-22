@@ -199,10 +199,12 @@ async function performAutologin(php, config, publish) {
  */
 export function startCoreArchivePrefetch({
   coreVersion = "",
+  manifest = null,
   onProgress,
 } = {}) {
-  return fetchManifest(coreVersion).then((manifest) =>
-    resolveBootstrapArchive({ manifest }, onProgress),
+  return Promise.resolve(manifest ?? fetchManifest(coreVersion)).then(
+    (resolvedManifest) =>
+      resolveBootstrapArchive({ manifest: resolvedManifest }, onProgress),
   );
 }
 
