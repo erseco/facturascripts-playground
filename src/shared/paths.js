@@ -61,7 +61,8 @@ export function hasBlueprintUrlOverride(locationLike = window.location.href) {
   return (
     url.searchParams.has("blueprint") ||
     url.searchParams.has("blueprint-url") ||
-    url.searchParams.has("blueprint-data")
+    url.searchParams.has("blueprint-data") ||
+    url.searchParams.has("blueprint-sid")
   );
 }
 
@@ -159,6 +160,10 @@ export function blueprintSourceKey(href = window.location.href) {
   const url = params.get("blueprint-url");
   if (url) {
     return `url:${url}`;
+  }
+  const sid = params.get("blueprint-sid");
+  if (sid) {
+    return `sid:${sid}`;
   }
   const inline = params.get("blueprint") ?? params.get("blueprint-data");
   if (inline) {

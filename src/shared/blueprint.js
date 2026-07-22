@@ -84,11 +84,22 @@ async function gunzipBytes(bytes) {
 }
 
 /**
+ * Soft cap for a shareable shell URL that embeds `?blueprint=…` inline.
+ * Stays under common reverse-proxy / browser header limits (~8 KB) while
+ * leaving room for other query params (scope, runtime, path…). Gzip keeps
+ * most demos under this; when it does not, we stash in sessionStorage.
+ */
+export const MAX_INLINE_BLUEPRINT_URL_LENGTH = 6000;
+
+const BLUEPRINT_STASH_PREFIX = "facturascripts-playground:blueprint-stash:";
+
+/**
  * Encode a blueprint object into the compact base64url payload used in
  * ?blueprint= links. Gzips the JSON when the browser supports it (and the
  * result is actually smaller); otherwise emits plain base64url JSON.
  */
 export async function encodeBlueprintParam(blueprint) {
+  // Compact JSON — pretty-printed editor text must not inflate share links.
   const utf8 = new TextEncoder().encode(JSON.stringify(blueprint));
   if (typeof CompressionStream === "function") {
     try {
@@ -101,6 +112,84 @@ export async function encodeBlueprintParam(blueprint) {
     }
   }
   return base64UrlFromBytes(utf8);
+}
+
+function newBlueprintStashId() {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID().replace(/-/gu, "").slice(0, 16);
+  }
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * Persist a blueprint in sessionStorage and return a short id for
+ * `?blueprint-sid=` when the gzipped inline URL would be too long.
+ */
+export function stashBlueprintPayload(blueprint) {
+  if (!hasWindow()) {
+    throw new Error("Blueprint stash requires a browser window.");
+  }
+  const id = newBlueprintStashId();
+  window.sessionStorage.setItem(
+    `${BLUEPRINT_STASH_PREFIX}${id}`,
+    JSON.stringify(blueprint),
+  );
+  return id;
+}
+
+/**
+ * Load a previously stashed blueprint by id. Returns null when missing/expired.
+ */
+export function loadStashedBlueprintPayload(id) {
+  if (!hasWindow()) {
+    return null;
+  }
+  const stashId = String(id || "").trim();
+  if (!stashId) {
+    return null;
+  }
+  const raw = window.sessionStorage.getItem(
+    `${BLUEPRINT_STASH_PREFIX}${stashId}`,
+  );
+  if (!raw) {
+    return null;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build the shell href used to boot a blueprint after Run/import.
+ * Prefers gzipped `?blueprint=` when the final URL stays under
+ * {@link MAX_INLINE_BLUEPRINT_URL_LENGTH}; otherwise stashes the payload in
+ * sessionStorage and uses a short `?blueprint-sid=` token (no URI-too-long).
+ *
+ * @param {string} currentHref
+ * @param {object} blueprint
+ * @returns {Promise<{ href: string, mode: "inline" | "stash", encoded?: string, sid?: string }>}
+ */
+export async function buildBlueprintBootHref(currentHref, blueprint) {
+  const encoded = await encodeBlueprintParam(blueprint);
+  const inlineUrl = new URL(currentHref);
+  inlineUrl.searchParams.delete("blueprint-url");
+  inlineUrl.searchParams.delete("blueprint-data");
+  inlineUrl.searchParams.delete("blueprint-sid");
+  inlineUrl.searchParams.set("blueprint", encoded);
+
+  if (inlineUrl.toString().length <= MAX_INLINE_BLUEPRINT_URL_LENGTH) {
+    return { href: inlineUrl.toString(), mode: "inline", encoded };
+  }
+
+  const sid = stashBlueprintPayload(blueprint);
+  const stashUrl = new URL(currentHref);
+  stashUrl.searchParams.delete("blueprint");
+  stashUrl.searchParams.delete("blueprint-url");
+  stashUrl.searchParams.delete("blueprint-data");
+  stashUrl.searchParams.set("blueprint-sid", sid);
+  return { href: stashUrl.toString(), mode: "stash", sid };
 }
 
 /**
@@ -526,7 +615,22 @@ export async function resolveBlueprintForShell(scopeId, config) {
 
   const url = new URL(window.location.href);
 
-  // 1. ?blueprint= (inline base64/JSON, or remote URL for backward compat)
+  // 1. ?blueprint-sid= (sessionStorage stash for oversized blueprints)
+  const blueprintSid = url.searchParams.get("blueprint-sid");
+  if (blueprintSid) {
+    const stashed = loadStashedBlueprintPayload(blueprintSid);
+    if (!stashed) {
+      throw new Error(
+        "Stored blueprint not found (session expired or different tab). " +
+          "Re-run from the editor, or open a remote ?blueprint=https://… URL.",
+      );
+    }
+    const payload = normalizeBlueprint(stashed, config);
+    saveActiveBlueprint(scopeId, payload);
+    return payload;
+  }
+
+  // 2. ?blueprint= (inline base64/JSON, or remote URL for backward compat)
   const blueprintParam = url.searchParams.get("blueprint");
   if (blueprintParam) {
     const looksLikeUrl =
@@ -551,7 +655,7 @@ export async function resolveBlueprintForShell(scopeId, config) {
     return payload;
   }
 
-  // 2. ?blueprint-url= (remote URL — primary, matches moodle-playground)
+  // 3. ?blueprint-url= (remote URL — primary, matches moodle-playground)
   const blueprintUrlParam = url.searchParams.get("blueprint-url");
   if (blueprintUrlParam) {
     const response = await fetch(
@@ -568,7 +672,7 @@ export async function resolveBlueprintForShell(scopeId, config) {
     return payload;
   }
 
-  // 3. ?blueprint-data= (legacy alias for ?blueprint=, kept for backward compat)
+  // 4. ?blueprint-data= (legacy alias for ?blueprint=, kept for backward compat)
   const blueprintDataParam = url.searchParams.get("blueprint-data");
   if (blueprintDataParam) {
     console.warn(

@@ -101,11 +101,16 @@ Actualmente el runtime usa el blueprint para:
 
 ## Como cargarlo
 
-Puedes aportar un blueprint de tres formas:
+Puedes aportar un blueprint de varias formas:
 
-- `?blueprint=/ruta/al/archivo.json`
-- `?blueprint-data=...` con JSON codificado en base64url
+- `?blueprint=https://…/blueprint.json` — **recomendado para demos grandes** (URL corta; el playground descarga el JSON)
+- `?blueprint-url=https://…/blueprint.json` — alias explícito de URL remota
+- `?blueprint=<base64url>` — payload inline, **gzip** cuando el navegador lo soporta
+- `?blueprint-sid=<id>` — fallback automático al pulsar Run/import si el inline superaría ~6 KB (sessionStorage; no es un enlace compartible entre dispositivos)
+- `?blueprint-data=...` — alias legacy de `?blueprint=`
 - importando el JSON desde la shell
+
+Si ves **URI too long** al pulsar Run, actualiza el playground (el editor ya hace fallback a `blueprint-sid`) o abre el demo con una URL remota en lugar de incrustar el JSON en la barra de direcciones.
 
 ## Como agregar plugins
 
