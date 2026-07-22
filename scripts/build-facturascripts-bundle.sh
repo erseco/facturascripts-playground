@@ -37,12 +37,16 @@ if [ -n "${FS_VERSION:-}" ]; then
   ' "$WORK_DIR/sqlite-support.diff" > "$WORK_DIR/sqlite-runtime.diff"
   (
     cd "$FS_STAGE"
-    git apply --check "$WORK_DIR/sqlite-runtime.diff"
-    git apply "$WORK_DIR/sqlite-runtime.diff"
+    patch -p1 -f -i "$WORK_DIR/sqlite-runtime.diff"
+    rm -f \
+      Core/Base/DataBase.php.orig \
+      Core/Controller/Installer.php.orig \
+      Core/Lib/Import/CSVImport.php.orig \
+      Core/Model/AttachedFile.php.orig \
+      Core/View/Installer/Install.html.twig.orig
 
-    # git apply deliberately honours ignore rules for newly-created paths.
-    # Official archives ignore SQLite*.php, so materialize the two additions
-    # explicitly from the same immutable commit used by the patch above.
+    # The filtered patch only contains modifications to existing runtime files.
+    # Materialize its two additions explicitly from the same immutable commit.
     curl --fail --location --silent --show-error \
       "https://raw.githubusercontent.com/erseco/facturascripts/$SQLITE_COMMIT/Core/Base/DataBase/SqliteEngine.php" \
       --output Core/Base/DataBase/SqliteEngine.php

@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 test.describe.configure({ timeout: 180_000 });
 
 const stableManifestFile = new URL(
-  "../../assets/manifests/2026.41.json",
+  "../../assets/manifests/2099.1.json",
   import.meta.url,
 );
 
@@ -120,17 +120,17 @@ test("info panel hosts the version config with a dirty-state apply", async ({
     route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        default: "2026.41",
+        default: "2099.1",
         versions: [
           {
-            version: "2026.41",
+            version: "2099.1",
             channels: ["stable"],
-            label: "2026.41 (Stable)",
+            label: "2099.1 (Stable)",
           },
           {
-            version: "2026.5",
+            version: "2099.2",
             channels: ["beta"],
-            label: "2026.5 (Beta)",
+            label: "2099.2 (Beta)",
           },
         ],
       }),
@@ -173,10 +173,10 @@ test("info panel hosts the version config with a dirty-state apply", async ({
     await expect(page.locator("#config-warning")).toBeHidden();
   }
 
-  await page.locator("#info-core-version").selectOption("2026.5");
+  await page.locator("#info-core-version").selectOption("2099.2");
   await expect(page.locator("#config-apply")).toBeVisible();
   await expect(page.locator("#config-warning")).toBeVisible();
-  await page.locator("#info-core-version").selectOption("2026.41");
+  await page.locator("#info-core-version").selectOption("2099.1");
   await expect(page.locator("#config-apply")).toBeHidden();
 });
 
