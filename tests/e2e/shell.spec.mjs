@@ -102,6 +102,17 @@ test("loads blueprint overrides and exposes runtime settings", async ({
 test("info panel hosts the version config with a dirty-state apply", async ({
   page,
 }) => {
+  await page.route(
+    /\/assets\/manifests\/2026\.(?:41|5)\.json$/u,
+    async (route) => {
+      const latestManifestUrl = new URL(
+        "assets/manifests/latest.json",
+        page.url(),
+      ).href;
+      const response = await route.fetch({ url: latestManifestUrl });
+      await route.fulfill({ response });
+    },
+  );
   await page.route("**/assets/manifests/versions.json", (route) =>
     route.fulfill({
       contentType: "application/json",
