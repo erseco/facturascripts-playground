@@ -120,8 +120,8 @@ jobs:
 
       - name: Verify SQLite bundle inputs
         run: |
-          test -f ".cache/build-facturascripts/stage/facturascripts/Core/Base/DataBase/SqliteEngine.php"
           test -f "assets/manifests/${{ matrix.version }}.json"
+          jq . "assets/manifests/${{ matrix.version }}.json"
           jq -e --arg version "${{ matrix.version }}" \
             '.release == $version and .bundle.format == "tar.zst" and .bundle.fileCount > 0' \
             "assets/manifests/${{ matrix.version }}.json"
