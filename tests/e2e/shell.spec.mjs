@@ -1,6 +1,16 @@
+import { copyFile, rm } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 
 test.describe.configure({ timeout: 180_000 });
+
+const stableManifestFile = new URL(
+  "../../assets/manifests/2026.41.json",
+  import.meta.url,
+);
+
+test.afterEach(async () => {
+  await rm(stableManifestFile, { force: true });
+});
 
 function buildBlueprintData(overrides = {}) {
   const payload = {
@@ -102,16 +112,9 @@ test("loads blueprint overrides and exposes runtime settings", async ({
 test("info panel hosts the version config with a dirty-state apply", async ({
   page,
 }) => {
-  await page.route(
-    /\/assets\/manifests\/2026\.(?:41|5)\.json$/u,
-    async (route) => {
-      const latestManifestUrl = new URL(
-        "assets/manifests/latest.json",
-        page.url(),
-      ).href;
-      const response = await route.fetch({ url: latestManifestUrl });
-      await route.fulfill({ response });
-    },
+  await copyFile(
+    new URL("../../assets/manifests/latest.json", import.meta.url),
+    stableManifestFile,
   );
   await page.route("**/assets/manifests/versions.json", (route) =>
     route.fulfill({
