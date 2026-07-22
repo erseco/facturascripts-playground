@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { describe, it } from "node:test";
 import {
-  MAX_INLINE_BLUEPRINT_URL_LENGTH,
   buildBlueprintBootHref,
   decodeBlueprintParam,
   encodeBlueprintParam,
   loadStashedBlueprintPayload,
+  MAX_INLINE_BLUEPRINT_URL_LENGTH,
   stashBlueprintPayload,
 } from "../src/shared/blueprint.js";
 
