@@ -1,9 +1,8 @@
 import {
-  encodeBlueprintParam,
+  buildBlueprintBootHref,
   normalizeBlueprint,
 } from "../shared/blueprint.js";
 import {
-  buildBlueprintRunUrl,
   createBlueprintValidationResult,
   highlightJson,
 } from "./blueprint-editor-core.js";
@@ -139,8 +138,10 @@ export function initBlueprintEditor(elements, options = {}) {
         statusEl.textContent = "Encoding blueprint and restarting playground…";
       }
 
-      const encoded = await encodeBlueprintParam(result.blueprint);
-      loc.href = buildBlueprintRunUrl(loc.href, encoded);
+      // Gzip + base64url when short enough; otherwise sessionStorage + sid
+      // so large seeds (e.g. AiScan) never hit "URI too long".
+      const boot = await buildBlueprintBootHref(loc.href, result.blueprint);
+      loc.href = boot.href;
     });
   }
 

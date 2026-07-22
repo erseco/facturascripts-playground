@@ -2,7 +2,7 @@ import { BUILD_VERSION } from "../generated/build-version.js";
 import {
   buildDefaultBlueprint,
   clearActiveBlueprint,
-  encodeBlueprintParam,
+  buildBlueprintBootHref,
   exportBlueprintPayload,
   parseImportedBlueprintPayload,
   resolveBlueprintForShell,
@@ -381,13 +381,13 @@ async function importPayload(file) {
   }
 
   // Encode blueprint into URL and reload for clean WASM runtime. Gzipped +
-  // base64url when the browser supports it, so shared links stay short.
-  const encoded = await encodeBlueprintParam(imported.blueprint);
-  const url = new URL(window.location.href);
-  url.searchParams.set("blueprint", encoded);
-  url.searchParams.delete("blueprint-url");
-  url.searchParams.delete("blueprint-data");
-  window.location.href = url.toString();
+  // base64url when short enough; otherwise sessionStorage + ?blueprint-sid=
+  // so large demos never hit "URI too long".
+  const boot = await buildBlueprintBootHref(
+    window.location.href,
+    imported.blueprint,
+  );
+  window.location.href = boot.href;
 }
 
 function bindShellChannel() {

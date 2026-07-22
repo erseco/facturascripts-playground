@@ -166,7 +166,12 @@ export function createBlueprintValidationResult(rawText, deps) {
 /**
  * Build the URL to navigate to in order to run an edited blueprint: sets
  * `blueprint=<encodedBlueprint>` and removes any `blueprint-url` /
- * `blueprint-data` param, preserving everything else on the current URL.
+ * `blueprint-data` / `blueprint-sid` param, preserving everything else on
+ * the current URL.
+ *
+ * Prefer {@link buildBlueprintBootHref} from `shared/blueprint.js` when the
+ * payload may exceed proxy/browser URL limits — that helper gzip-encodes and
+ * falls back to a short `?blueprint-sid=` session stash.
  *
  * @param {string} currentHref
  * @param {string} encodedBlueprint
@@ -177,5 +182,6 @@ export function buildBlueprintRunUrl(currentHref, encodedBlueprint) {
   url.searchParams.set("blueprint", encodedBlueprint);
   url.searchParams.delete("blueprint-url");
   url.searchParams.delete("blueprint-data");
+  url.searchParams.delete("blueprint-sid");
   return url.toString();
 }
