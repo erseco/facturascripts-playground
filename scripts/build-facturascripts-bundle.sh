@@ -30,8 +30,12 @@ if [ -n "${FS_VERSION:-}" ]; then
       --include='Core/**' "$WORK_DIR/sqlite-support.diff"
     git apply --exclude='Core/Template/ModelClass.php' \
       --include='Core/**' "$WORK_DIR/sqlite-support.diff"
-    test -f Core/Base/DataBase/SqliteEngine.php
-    test -f Core/Base/DataBase/SqliteQueries.php
+    if [ ! -f Core/Base/DataBase/SqliteEngine.php ] || \
+      [ ! -f Core/Base/DataBase/SqliteQueries.php ]; then
+      echo "SQLite patch did not materialize the expected engine files:" >&2
+      find Core/Base/DataBase -maxdepth 1 -type f -print >&2
+      exit 1
+    fi
   )
 fi
 
