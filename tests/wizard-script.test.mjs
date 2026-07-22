@@ -138,4 +138,12 @@ describe("buildWizardScript", () => {
     const script = buildWizardScript(config);
     assert.ok(script.includes("$defaultplan = false"));
   });
+
+  it("ensures default serie and open exercise for today", () => {
+    const script = buildWizardScript(baseConfig);
+    assert.ok(script.includes("loadFromDate"));
+    assert.ok(script.includes("codserierec"));
+    assert.ok(script.includes("user->codserie = $codserie"));
+    assert.ok(script.includes("'codejercicio'"));
+  });
 });

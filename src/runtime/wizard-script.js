@@ -166,6 +166,38 @@ if ($costpricepolicy !== '') {
 if ($regimeniva !== '') {
     Tools::settingsSet('default', 'regimeniva', $regimeniva);
 }
+
+// Default document series (general + rectifying).
+$codserie = (string)Tools::settings('default', 'codserie', 'A');
+if ($codserie === '') {
+    $codserie = 'A';
+}
+$serie = new Serie();
+if (!$serie->loadFromCode($codserie)) {
+    $serie->codserie = $codserie;
+    $serie->descripcion = $codserie === 'A' ? 'General' : $codserie;
+    $serie->save();
+}
+Tools::settingsSet('default', 'codserie', $codserie);
+if (!Tools::settings('default', 'codserierec')) {
+    $serieRec = new Serie();
+    if (!$serieRec->loadFromCode('R')) {
+        $serieRec->codserie = 'R';
+        $serieRec->descripcion = 'Rectificativas';
+        $serieRec->tipo = 'R';
+        $serieRec->save();
+    }
+    Tools::settingsSet('default', 'codserierec', 'R');
+}
+
+// Open accounting exercise for today (documents resolve codejercicio via loadFromDate).
+$codejercicio = '';
+$ejercicio = new Ejercicio();
+$ejercicio->idempresa = $empresa->idempresa;
+if ($ejercicio->loadFromDate(date('d-m-Y'), true, true)) {
+    $codejercicio = (string)$ejercicio->codejercicio;
+}
+
 Tools::settingsSave();
 
 // Import default accounting plan (PGC for ESP) so invoices can generate asientos.
@@ -173,7 +205,9 @@ if ($defaultplan) {
     $cuenta = new Cuenta();
     if ($cuenta->count() === 0) {
         $planFile = FS_FOLDER . '/Dinamic/Data/Codpais/' . $codpais . '/defaultPlan.csv';
-        if (is_file($planFile)) {
+        if (is_file($planFile) && $codejercicio !== '') {
+            (new AccountingPlanImport())->importCSV($planFile, $codejercicio);
+        } elseif (is_file($planFile)) {
             foreach (Ejercicio::all() as $exercise) {
                 (new AccountingPlanImport())->importCSV($planFile, $exercise->codejercicio);
                 break;
@@ -193,18 +227,19 @@ $user->email = '${phpQuote(email)}';
 if (strlen('${phpQuote(adminPassword)}') >= 8) { $user->setPassword('${phpQuote(adminPassword)}'); }
 $user->langcode = '${phpQuote(locale)}';
 $user->homepage = 'Dashboard';
+$user->idempresa = $empresa->idempresa;
 if ($codAlmacen = Tools::settings('default', 'codalmacen')) {
     $user->codalmacen = $codAlmacen;
 }
-if ($codSerie = Tools::settings('default', 'codserie')) {
-    $user->codserie = $codSerie;
-}
+$user->codserie = $codserie;
 $user->save();
 
 echo json_encode([
     'ok' => true,
     'codpais' => $codpais,
     'codimpuesto' => Tools::settings('default', 'codimpuesto'),
+    'codserie' => $codserie,
+    'codejercicio' => $codejercicio,
     'codalmacen' => Tools::settings('default', 'codalmacen'),
     'defaultplan' => $defaultplan,
 ]);
