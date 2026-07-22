@@ -8,6 +8,7 @@ import {
   resolveBlueprintForShell,
 } from "../shared/blueprint.js";
 import { getDefaultRuntime, loadPlaygroundConfig } from "../shared/config.js";
+import { loadCoreVersions } from "../shared/core-versions.js";
 import {
   blueprintSourceKey,
   hasBlueprintUrlOverride,
@@ -48,6 +49,7 @@ const els = {
   refresh: document.querySelector("#refresh-button"),
   reset: document.querySelector("#reset-button"),
   infoPhpVersion: document.querySelector("#info-php-version"),
+  infoCoreVersion: document.querySelector("#info-core-version"),
   configStatus: document.querySelector("#config-status"),
   configWarning: document.querySelector("#config-warning"),
   configApply: document.querySelector("#config-apply"),
@@ -74,6 +76,8 @@ const blueprintEditor = initBlueprintEditor(
 );
 
 let currentRuntimeId;
+let currentCoreVersion = "";
+let supportedCoreVersions = { defaultVersion: "", versions: [] };
 let currentPath = "/";
 let channel;
 let serviceWorkerReady = null;
@@ -123,6 +127,7 @@ function setUiLocked(locked) {
   uiLocked = locked;
   els.address.disabled = locked;
   els.refreshPhpInfoButton.disabled = locked;
+  els.infoCoreVersion.disabled = locked;
   els.reset.disabled = locked;
   els.exportButton.disabled = locked;
   els.importInput.disabled = locked;
@@ -141,6 +146,7 @@ async function ensureRuntimeServiceWorker() {
   swUrl.searchParams.set("v", BUILD_VERSION);
   swUrl.searchParams.set("scope", scopeId);
   swUrl.searchParams.set("runtime", currentRuntimeId);
+  swUrl.searchParams.set("core", currentCoreVersion);
 
   const registration = await navigator.serviceWorker.register(swUrl, {
     scope: "./",
@@ -169,7 +175,12 @@ async function updateFrame() {
   }
 
   await serviceWorkerReady;
-  const url = resolveRemoteUrl(scopeId, currentRuntimeId, currentPath);
+  const url = resolveRemoteUrl(
+    scopeId,
+    currentRuntimeId,
+    currentPath,
+    currentCoreVersion,
+  );
   if (pendingCleanBoot) {
     url.searchParams.set("clean", "1");
   }
@@ -320,6 +331,7 @@ function saveState(extra = {}) {
   saveSessionState(scopeId, {
     scopeId,
     runtimeId: currentRuntimeId,
+    coreVersion: currentCoreVersion,
     path: currentPath,
     ...extra,
   });
@@ -452,6 +464,22 @@ function populateConfigSelects() {
     els.infoPhpVersion.append(option);
   }
   els.infoPhpVersion.value = currentRuntimeId;
+
+  els.infoCoreVersion.innerHTML = "";
+  if (supportedCoreVersions.versions.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "Latest build";
+    els.infoCoreVersion.append(option);
+  } else {
+    for (const core of supportedCoreVersions.versions) {
+      const option = document.createElement("option");
+      option.value = core.version;
+      option.textContent = core.label;
+      els.infoCoreVersion.append(option);
+    }
+  }
+  els.infoCoreVersion.value = currentCoreVersion;
 }
 
 // Reflect the applied runtime in the Info panel: when the selected PHP version
@@ -462,7 +490,9 @@ function refreshDirtyState() {
   if (!els.infoPhpVersion) {
     return;
   }
-  const dirty = els.infoPhpVersion.value !== currentRuntimeId;
+  const dirty =
+    els.infoPhpVersion.value !== currentRuntimeId ||
+    els.infoCoreVersion.value !== currentCoreVersion;
 
   if (els.configStatus) {
     els.configStatus.className = dirty ? "dirty-note" : "status-pill";
@@ -486,16 +516,32 @@ function updateConfigState() {
 
 function applyConfigAndReset() {
   const newRuntimeId = els.infoPhpVersion?.value;
+  const newCoreVersion = els.infoCoreVersion?.value || "";
 
-  if (newRuntimeId === currentRuntimeId) {
+  if (
+    newRuntimeId === currentRuntimeId &&
+    newCoreVersion === currentCoreVersion
+  ) {
     return;
   }
 
+  const coreChanged = newCoreVersion !== currentCoreVersion;
   currentRuntimeId = newRuntimeId;
+  currentCoreVersion = newCoreVersion;
   remoteFrameBooted = false;
   appendLog(`Switching runtime to ${currentRuntimeId}`);
   updateConfigState();
   saveState({ switchedAt: new Date().toISOString() });
+  if (coreChanged) {
+    const url = new URL(window.location.href);
+    if (currentCoreVersion) {
+      url.searchParams.set("version", currentCoreVersion);
+    } else {
+      url.searchParams.delete("version");
+    }
+    window.location.href = url.toString();
+    return;
+  }
   serviceWorkerReady = null;
   pendingCleanBoot = true;
   setPhpInfoContent("");
@@ -503,7 +549,10 @@ function applyConfigAndReset() {
 }
 
 async function main() {
-  config = await loadPlaygroundConfig();
+  [config, supportedCoreVersions] = await Promise.all([
+    loadPlaygroundConfig(),
+    loadCoreVersions(),
+  ]);
   activeBlueprint = await resolveBlueprintForShell(scopeId, config);
   updateBlueprintTextarea();
 
@@ -520,6 +569,17 @@ async function main() {
   window.sessionStorage.setItem(blueprintStoreKey, blueprintKey);
 
   const previous = loadSessionState(scopeId);
+  const requestedCoreVersion = new URL(window.location.href).searchParams.get(
+    "version",
+  );
+  const supportedVersionIds = new Set(
+    supportedCoreVersions.versions.map((entry) => entry.version),
+  );
+  currentCoreVersion = supportedVersionIds.has(requestedCoreVersion)
+    ? requestedCoreVersion
+    : supportedVersionIds.has(previous?.coreVersion)
+      ? previous.coreVersion
+      : supportedCoreVersions.defaultVersion;
   const defaultRuntime = getDefaultRuntime(config);
   const preferredPath =
     activeBlueprint?.landingPage || config.landingPath || "/";
@@ -543,6 +603,9 @@ async function main() {
   // Configuration (Info panel) event listeners
   if (els.infoPhpVersion) {
     els.infoPhpVersion.addEventListener("change", refreshDirtyState);
+  }
+  if (els.infoCoreVersion) {
+    els.infoCoreVersion.addEventListener("change", refreshDirtyState);
   }
   if (els.configApply) {
     els.configApply.addEventListener("click", applyConfigAndReset);

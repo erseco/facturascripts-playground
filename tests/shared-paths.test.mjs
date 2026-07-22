@@ -7,6 +7,7 @@ import {
   joinBasePath,
   resolveAppUrl,
   resolveConfiguredProxyUrl,
+  resolveRemoteUrl,
 } from "../src/shared/paths.js";
 
 function withWindow(windowLike, fn) {
@@ -118,5 +119,20 @@ describe("shared path helpers", () => {
         "/playground/scope-1/php83/dashboard",
       );
     });
+  });
+
+  it("passes the selected core version to the runtime host", () => {
+    withWindow(
+      { location: { href: "https://example.com/playground/index.html" } },
+      () => {
+        const url = resolveRemoteUrl(
+          "scope-1",
+          "php83",
+          "/dashboard",
+          "2026.41",
+        );
+        assert.equal(url.searchParams.get("core"), "2026.41");
+      },
+    );
   });
 });

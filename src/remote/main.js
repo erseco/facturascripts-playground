@@ -48,7 +48,7 @@ function emit(scopeId, message) {
   channel.close();
 }
 
-async function registerRuntimeServiceWorker(scopeId, runtimeId, config) {
+async function registerRuntimeServiceWorker(scopeId, runtimeId, coreVersion) {
   if (navigator.serviceWorker.controller) {
     return navigator.serviceWorker.ready;
   }
@@ -57,6 +57,7 @@ async function registerRuntimeServiceWorker(scopeId, runtimeId, config) {
   swUrl.searchParams.set("v", BUILD_VERSION);
   swUrl.searchParams.set("scope", scopeId);
   swUrl.searchParams.set("runtime", runtimeId);
+  swUrl.searchParams.set("core", coreVersion);
 
   const registration = await navigator.serviceWorker.register(swUrl, {
     scope: "./",
@@ -210,6 +211,7 @@ async function bootstrapRemote() {
   const url = new URL(window.location.href);
   const scopeId = url.searchParams.get("scope");
   const requestedRuntimeId = url.searchParams.get("runtime");
+  const coreVersion = url.searchParams.get("core") || "";
   const requestedPath = url.searchParams.get("path") || "/";
   forceCleanBoot = url.searchParams.get("clean") === "1";
   _activeScopeId = scopeId;
@@ -233,7 +235,7 @@ async function bootstrapRemote() {
     progress: 0.08,
   });
 
-  await registerRuntimeServiceWorker(scopeId, runtime.id, config);
+  await registerRuntimeServiceWorker(scopeId, runtime.id, coreVersion);
   await waitForServiceWorkerControl();
   setRemoteProgress("Service Worker ready and controlling this tab.", 0.12);
 
@@ -260,6 +262,7 @@ async function bootstrapRemote() {
     workerUrl.searchParams.set("v", BUILD_VERSION);
     workerUrl.searchParams.set("scope", scopeId);
     workerUrl.searchParams.set("runtime", runtime.id);
+    workerUrl.searchParams.set("core", coreVersion);
     phpWorker = new Worker(workerUrl, { type: "module" });
     phpWorker.addEventListener("error", (event) => {
       const detail =
@@ -288,6 +291,7 @@ async function bootstrapRemote() {
   setRemoteProgress(`php-worker ready for ${runtime.id}.`, 0.16);
 
   saveSessionState(scopeId, {
+    coreVersion,
     runtimeId: runtime.id,
     path: requestedPath,
   });

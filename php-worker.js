@@ -20,6 +20,7 @@ import {
 const workerUrl = new URL(self.location.href);
 const scopeId = workerUrl.searchParams.get("scope");
 const runtimeId = workerUrl.searchParams.get("runtime");
+const coreVersion = workerUrl.searchParams.get("core") || "";
 
 let bridgeChannel = null;
 let runtimeStatePromise = null;
@@ -151,6 +152,7 @@ async function getRuntimeState() {
     // Parallel boot: start downloading the readonly-core manifest + bundle now
     // so the fetch overlaps the WASM runtime compile in php.refresh().
     const corePrefetch = startCoreArchivePrefetch({
+      coreVersion,
       onProgress: (p) => {
         if (p?.ratio !== undefined) {
           publishProgress(
@@ -194,6 +196,7 @@ async function getRuntimeState() {
         config,
         blueprint: activeBlueprint,
         clean: forceCleanBoot,
+        coreVersion,
         corePrefetch,
         php,
         publish,

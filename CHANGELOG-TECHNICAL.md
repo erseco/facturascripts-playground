@@ -6,6 +6,32 @@ are the way they are and avoid re-investigating solved problems.
 
 ---
 
+## Supported FacturaScripts release channels
+
+**Date:** 2026-07-22
+**Context:** Automated playground bundles without accumulating every upstream
+release indefinitely.
+
+### Decision
+
+- Pages discovers the official `stable` and `beta` downloads from their
+  `Content-Disposition` filenames.
+- The build matrix is deduplicated when both channels point to the same version.
+- Each version gets an immutable bundle and manifest; `latest.json` aliases the
+  current stable manifest and `versions.json` drives the browser selector.
+- Official ZIP builds receive the runtime-only portion of the fork's pinned
+  SQLite commit. The build fails if that patch no longer applies, making an
+  upstream compatibility break visible instead of publishing a broken bundle.
+- Superseded betas and arbitrary historical releases are not retained. The
+  official channels define the supported set.
+
+**Files:** `.github/workflows/pages.yml`, `scripts/fetch-facturascripts-source.sh`,
+`scripts/build-facturascripts-bundle.sh`, `src/shared/core-versions.js`,
+`src/runtime/manifest.js`, `src/shell/main.js`, `src/remote/main.js`,
+`php-worker.js`
+
+---
+
 ## Selective persistence checkpoints and runtime tuning
 
 **Date:** 2026-07-12

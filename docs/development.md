@@ -47,6 +47,12 @@ node --check src/shared/storage.js
 
 El bundle readonly se genera con `scripts/build-facturascripts-bundle.sh`.
 
+El workflow de Pages descubre las versiones oficiales `stable` y `beta` desde
+`facturascripts.com`, construye una matriz dinámica deduplicada y publica un
+manifiesto por versión junto a `assets/manifests/versions.json`. No se conservan
+betas sustituidas ni una ventana arbitraria de releases antiguas: los canales
+oficiales son la fuente de verdad del soporte publicado.
+
 Variables de entorno soportadas:
 
 - `FS_REF`: repositorio fuente de FacturaScripts

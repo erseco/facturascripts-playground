@@ -222,6 +222,12 @@ Durante el build:
 - se genera el bundle readonly del core en `assets/facturascripts/`
 - se actualiza el manifiesto en `assets/manifests/latest.json`
 
+En los despliegues, GitHub Actions consulta los canales oficiales de
+FacturaScripts y genera únicamente los bundles `stable` y `beta`. Si ambos
+canales apuntan a la misma versión, se genera un solo bundle. El selector de la
+sección **Info** permite cambiar entre las versiones publicadas; el cambio
+reinicia la instalación porque cada bundle mantiene un core readonly distinto.
+
 ## Documentacion adicional
 
 - [Inicio de la documentacion](docs/index.md)

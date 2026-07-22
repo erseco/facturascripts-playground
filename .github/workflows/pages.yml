@@ -3,6 +3,8 @@ name: Deploy Pages
 on:
   push:
     branches: ["main"]
+  schedule:
+    - cron: "23 4 * * *"
   pull_request:
     branches: ["main"]
     types: [opened, reopened, synchronize]
@@ -24,13 +26,126 @@ env:
   PREVIEW_BUTTON_IMG: https://raw.githubusercontent.com/erseco/facturascripts-playground/main/assets/playground-preview-button.svg
 
 jobs:
+  discover-versions:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.versions.outputs.changed }}
+      matrix: ${{ steps.versions.outputs.matrix }}
+      stable: ${{ steps.versions.outputs.stable }}
+      index: ${{ steps.versions.outputs.index }}
+    steps:
+      - name: Read official supported channels
+        id: versions
+        run: |
+          set -euo pipefail
+
+          channel_version() {
+            local channel="$1" headers version
+            headers=$(curl --fail --silent --show-error --location --head \
+              "https://facturascripts.com/DownloadBuild/1/${channel}")
+            version=$(sed -nE 's/.*filename="?CORE-([0-9]{4}(\.[0-9]+)?)\.zip"?.*/\1/ip' \
+              <<< "$headers" | tail -1)
+            [[ "$version" =~ ^[0-9]{4}(\.[0-9]+)?$ ]] || {
+              echo "Could not detect FacturaScripts ${channel}" >&2
+              exit 1
+            }
+            printf '%s' "$version"
+          }
+
+          stable=$(channel_version stable)
+          beta=$(channel_version beta)
+          if [[ "$stable" == "$beta" ]]; then
+            matrix=$(jq -nc --arg version "$stable" \
+              '{include: [{version: $version, channels: "stable,beta"}]}')
+            index=$(jq -nc --arg version "$stable" \
+              '{schemaVersion: 1, default: $version, versions: [{version: $version, channels: ["stable", "beta"], label: ($version + " (Stable & Beta)")}]}')
+          else
+            matrix=$(jq -nc --arg stable "$stable" --arg beta "$beta" \
+              '{include: [{version: $stable, channels: "stable"}, {version: $beta, channels: "beta"}]}')
+            index=$(jq -nc --arg stable "$stable" --arg beta "$beta" \
+              '{schemaVersion: 1, default: $stable, versions: [{version: $stable, channels: ["stable"], label: ($stable + " (Stable)")}, {version: $beta, channels: ["beta"], label: ($beta + " (Beta)")}]}')
+          fi
+
+          changed=true
+          if [[ "$GITHUB_EVENT_NAME" == schedule ]]; then
+            deployed=$(curl --fail --silent --show-error \
+              'https://facturascripts-playground.pages.dev/assets/manifests/versions.json' || true)
+            if [[ -n "$deployed" ]] && \
+              [[ "$(jq -S -c . <<< "$deployed")" == "$(jq -S -c . <<< "$index")" ]]; then
+              changed=false
+            fi
+          fi
+
+          {
+            echo "changed=$changed"
+            echo "matrix=$matrix"
+            echo "stable=$stable"
+            echo "index=$index"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo '# Supported FacturaScripts versions'
+            echo "- Stable: $stable"
+            echo "- Beta: $beta"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build-core:
+    needs: discover-versions
+    if: needs.discover-versions.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.discover-versions.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          tools: composer
+
+      - name: Install bundle dependencies
+        run: npm install
+
+      - name: Build supported FacturaScripts core
+        env:
+          FS_VERSION: ${{ matrix.version }}
+          MANIFEST_FILE: ${{ matrix.version }}.json
+          UPDATE_CONFIG: "false"
+        run: npm run bundle
+
+      - name: Verify SQLite bundle inputs
+        run: |
+          test -f ".cache/build-facturascripts/stage/facturascripts/Core/Base/DataBase/SqliteEngine.php"
+          test -f "assets/manifests/${{ matrix.version }}.json"
+          jq -e --arg version "${{ matrix.version }}" \
+            '.release == $version and .bundle.format == "tar.zst" and .bundle.fileCount > 0' \
+            "assets/manifests/${{ matrix.version }}.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: facturascripts-core-${{ matrix.version }}
+          path: |
+            assets/facturascripts/*.tar.zst
+            assets/manifests/${{ matrix.version }}.json
+          if-no-files-found: error
+          retention-days: 1
+
   build:
+    needs:
+      - discover-versions
+      - build-core
+    if: needs.discover-versions.outputs.changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/configure-pages@v6
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
 
       - uses: actions/setup-node@v7
         with:
@@ -43,19 +158,33 @@ jobs:
         with:
           python-version: "3.12"
 
-      - uses: shivammathur/setup-php@v2
-        with:
-          php-version: "8.3"
-          tools: composer
-
       - name: Install dependencies
         run: npm install
 
       - name: Prepare runtime assets
-        run: make prepare
+        run: |
+          npm run sync-browser-deps
+          npm run build-worker
+          npm run prepare-runtime
 
-      - name: Build FacturaScripts bundle
-        run: make bundle
+      - name: Download supported FacturaScripts bundles
+        uses: actions/download-artifact@v5
+        with:
+          pattern: facturascripts-core-*
+          path: assets
+          merge-multiple: true
+
+      - name: Publish version index and stable alias
+        env:
+          STABLE_VERSION: ${{ needs.discover-versions.outputs.stable }}
+          VERSIONS_INDEX: ${{ needs.discover-versions.outputs.index }}
+        run: |
+          printf '%s\n' "$VERSIONS_INDEX" | jq . > assets/manifests/versions.json
+          cp "assets/manifests/${STABLE_VERSION}.json" assets/manifests/latest.json
+          config_tmp=$(mktemp)
+          jq --arg version "${STABLE_VERSION}-${GITHUB_SHA::12}" \
+            '.bundleVersion = $version' playground.config.json > "$config_tmp"
+          mv "$config_tmp" playground.config.json
 
       - name: Install docs dependencies
         run: python -m pip install -r requirements-docs.txt
@@ -76,14 +205,14 @@ jobs:
           touch _site/.nojekyll
 
       - name: Upload Pages artifact
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v5
         with:
           path: _site
 
       # ── Cloudflare Pages (Direct Upload) ──
       - name: Deploy to Cloudflare Pages (production)
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npx --yes wrangler@4 pages deploy _site --project-name="$CLOUDFLARE_PAGES_PROJECT" --branch=main --commit-dirty=true
@@ -140,7 +269,7 @@ jobs:
           fi
 
   deploy:
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

@@ -16,17 +16,39 @@ mkdir -p "$FS_STAGE" "$DIST_DIR" "$MANIFEST_DIR"
 cp -R "$SOURCE_DIR"/. "$FS_STAGE"
 rm -rf "$FS_STAGE/.git" "$FS_STAGE/.github" "$FS_STAGE/tests" "$FS_STAGE/Test"
 
+# Official builds do not include the pending SQLite support required by the
+# browser runtime. Apply the immutable runtime portion of the fork's SQLite
+# commit. ModelClass is intentionally excluded: supported releases already
+# contain their own length validation and that hunk differs between channels.
+if [ -n "${FS_VERSION:-}" ]; then
+  curl --fail --location --silent --show-error \
+    "https://github.com/erseco/facturascripts/commit/14f07e6f2d7ebdace161e5383122011a73d6378c.diff" \
+    --output "$WORK_DIR/sqlite-support.diff"
+  (
+    cd "$FS_STAGE"
+    git apply --check --exclude='Core/Template/ModelClass.php' \
+      --include='Core/**' "$WORK_DIR/sqlite-support.diff"
+    git apply --exclude='Core/Template/ModelClass.php' \
+      --include='Core/**' "$WORK_DIR/sqlite-support.diff"
+  )
+fi
+
 perl -0pi -e "s/'curl',//g" "$FS_STAGE/Core/Controller/Installer.php"
 perl -0pi -e "s/'fileinfo',//g" "$FS_STAGE/Core/Controller/Installer.php"
 perl -0pi -e "s/'bcmath',//g" "$FS_STAGE/Core/Controller/Installer.php"
 perl -pi -e 's/public function updateActivity\(string \$ipAddress, string \$browser/public function updateActivity(string \$ipAddress, ?string \$browser/' "$FS_STAGE/Core/Model/User.php"
 perl -pi -e "s/\\\$browser = \\\$this->request->header\\('User-Agent'\\);/\\\$browser = \\\$this->request->header('User-Agent') ?? '';/" "$FS_STAGE/Core/Base/Controller.php"
 
-if command -v composer >/dev/null 2>&1; then
-  composer install --working-dir="$FS_STAGE" --no-dev --prefer-dist --no-progress --no-interaction --ignore-platform-reqs >&2
-else
-  echo "composer is required to materialize FacturaScripts vendor dependencies for the browser bundle." >&2
-  return 1
+if [ -f "$FS_STAGE/composer.json" ]; then
+  if command -v composer >/dev/null 2>&1; then
+    composer install --working-dir="$FS_STAGE" --no-dev --prefer-dist --no-progress --no-interaction --ignore-platform-reqs >&2
+  else
+    echo "composer is required to materialize FacturaScripts vendor dependencies for the browser bundle." >&2
+    exit 1
+  fi
+elif [ ! -f "$FS_STAGE/vendor/autoload.php" ]; then
+  echo "The official build does not contain materialized Composer dependencies." >&2
+  exit 1
 fi
 
 if [ -f "$FS_STAGE/package.json" ]; then
@@ -75,12 +97,20 @@ if [ -n "$SYMLINKS" ]; then
   exit 1
 fi
 
-SOURCE_COMMIT=$(git -C "$SOURCE_DIR" rev-parse HEAD)
+if [ -d "$SOURCE_DIR/.git" ]; then
+  SOURCE_COMMIT=$(git -C "$SOURCE_DIR" rev-parse HEAD)
+  SOURCE_REPOSITORY=${FS_REF:-https://github.com/erseco/facturascripts.git}
+  SOURCE_BRANCH=${FS_REF_BRANCH:-feature/add-sqlite-support}
+else
+  SOURCE_COMMIT="official-$FS_VERSION"
+  SOURCE_REPOSITORY="https://facturascripts.com/DownloadBuild/1/$FS_VERSION"
+  SOURCE_BRANCH=$FS_VERSION
+fi
 RELEASE=$(php -r 'preg_match("/function version\(\).*?return\s+([\d.]+)/s", file_get_contents("'"$FS_STAGE"'/Core/Kernel.php"), $m); echo $m[1] ?? "unknown";')
 SAFE_RELEASE=$(printf '%s' "$RELEASE" | sed 's/[^A-Za-z0-9._-]/_/g')
 BUNDLE_FILE="facturascripts-core-${SAFE_RELEASE}.tar.zst"
 BUNDLE_PATH="$DIST_DIR/$BUNDLE_FILE"
-MANIFEST_PATH="$MANIFEST_DIR/latest.json"
+MANIFEST_PATH="$MANIFEST_DIR/${MANIFEST_FILE:-latest.json}"
 
 # Pack the staged tree ($FS_STAGE holds the root-relative core) into a
 # deterministic, zstd-compressed tar. The browser runtime extracts it by
@@ -101,8 +131,8 @@ node "$SCRIPT_DIR/generate-manifest.mjs" \
   --channel browser \
   --manifest "$MANIFEST_PATH" \
   --release "$RELEASE" \
-  --sourceRepository "${FS_REF:-https://github.com/erseco/facturascripts.git}" \
-  --sourceBranch "${FS_REF_BRANCH:-feature/add-sqlite-support}" \
+  --sourceRepository "$SOURCE_REPOSITORY" \
+  --sourceBranch "$SOURCE_BRANCH" \
   --sourceCommit "$SOURCE_COMMIT" \
   --bundle "$BUNDLE_PATH" \
   --fileCount "$FILE_COUNT"
@@ -110,7 +140,7 @@ node "$SCRIPT_DIR/generate-manifest.mjs" \
 # Update bundleVersion in playground.config.json so the SW cache-busts on each build.
 BUILD_VERSION="${RELEASE}-build$(date +%Y%m%d%H%M)"
 CONFIG_FILE="$REPO_DIR/playground.config.json"
-if [ -f "$CONFIG_FILE" ]; then
+if [ "${UPDATE_CONFIG:-true}" = "true" ] && [ -f "$CONFIG_FILE" ]; then
   sed -i.bak "s/\"bundleVersion\":.*$/\"bundleVersion\": \"$BUILD_VERSION\",/" "$CONFIG_FILE"
   rm -f "$CONFIG_FILE.bak"
   echo "Updated bundleVersion to $BUILD_VERSION" >&2

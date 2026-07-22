@@ -102,6 +102,26 @@ test("loads blueprint overrides and exposes runtime settings", async ({
 test("info panel hosts the version config with a dirty-state apply", async ({
   page,
 }) => {
+  await page.route("**/assets/manifests/versions.json", (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        default: "2026.41",
+        versions: [
+          {
+            version: "2026.41",
+            channels: ["stable"],
+            label: "2026.41 (Stable)",
+          },
+          {
+            version: "2026.5",
+            channels: ["beta"],
+            label: "2026.5 (Beta)",
+          },
+        ],
+      }),
+    }),
+  );
   await page.goto("/");
   await waitForRuntimeReady(page);
 
@@ -114,6 +134,7 @@ test("info panel hosts the version config with a dirty-state apply", async ({
 
   const phpOptions = await page.locator("#info-php-version option").count();
   expect(phpOptions).toBeGreaterThan(0);
+  await expect(page.locator("#info-core-version option")).toHaveCount(2);
 
   // Clean state: no Apply button and no destructive warning.
   await expect(page.locator("#config-apply")).toBeHidden();
@@ -137,6 +158,12 @@ test("info panel hosts the version config with a dirty-state apply", async ({
     await expect(page.locator("#config-apply")).toBeHidden();
     await expect(page.locator("#config-warning")).toBeHidden();
   }
+
+  await page.locator("#info-core-version").selectOption("2026.5");
+  await expect(page.locator("#config-apply")).toBeVisible();
+  await expect(page.locator("#config-warning")).toBeVisible();
+  await page.locator("#info-core-version").selectOption("2026.41");
+  await expect(page.locator("#config-apply")).toBeHidden();
 });
 
 test("persists /persist to IndexedDB and reboots from it on reload", async ({
