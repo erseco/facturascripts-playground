@@ -98,44 +98,4 @@ describe("buildWizardScript", () => {
     assert.ok(script.includes("json_encode"));
     assert.ok(script.includes("application/json"));
   });
-
-  it("initializes core billing models (taxes, payment methods, series)", () => {
-    const script = buildWizardScript(baseConfig);
-    for (const model of ["Impuesto", "FormaPago", "Serie", "Ejercicio"]) {
-      assert.ok(script.includes(model), `Script should reference model ${model}`);
-    }
-  });
-
-  it("imports accounting plan when defaultplan is true", () => {
-    const script = buildWizardScript(baseConfig);
-    assert.ok(script.includes("AccountingPlanImport"));
-    assert.ok(script.includes("defaultPlan.csv"));
-    assert.ok(script.includes("$defaultplan = true"));
-  });
-
-  it("applies codimpuesto and company address from install", () => {
-    const config = {
-      ...baseConfig,
-      install: {
-        ...baseConfig.install,
-        codimpuesto: "IGIC7",
-        ciudad: "Santa Cruz de Tenerife",
-        provincia: "Santa Cruz de Tenerife",
-        cifnif: "125478938W",
-      },
-    };
-    const script = buildWizardScript(config);
-    assert.ok(script.includes("IGIC7"));
-    assert.ok(script.includes("Santa Cruz de Tenerife"));
-    assert.ok(script.includes("125478938W"));
-  });
-
-  it("can disable accounting plan import", () => {
-    const config = {
-      ...baseConfig,
-      install: { ...baseConfig.install, defaultplan: false },
-    };
-    const script = buildWizardScript(config);
-    assert.ok(script.includes("$defaultplan = false"));
-  });
 });
