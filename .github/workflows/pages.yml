@@ -168,7 +168,7 @@ jobs:
           npm run prepare-runtime
 
       - name: Download supported FacturaScripts bundles
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           pattern: facturascripts-core-*
           path: assets
