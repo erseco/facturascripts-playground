@@ -126,7 +126,7 @@ jobs:
             '.release == $version and .bundle.format == "tar.zst" and .bundle.fileCount > 0' \
             "assets/manifests/${{ matrix.version }}.json"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: facturascripts-core-${{ matrix.version }}
           path: |
