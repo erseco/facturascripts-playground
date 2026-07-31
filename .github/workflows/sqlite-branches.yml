@@ -16,7 +16,7 @@ jobs:
     outputs:
       matrix: ${{ steps.detect.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - id: detect
         run: |
@@ -43,14 +43,14 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.versions.outputs.matrix) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: shivammathur/setup-php@v2
         with:
           php-version: "8.3"
           tools: composer
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           # build-tar-zst-bundle.mjs necesita el zstd nativo de node:zlib.
           node-version: 24
