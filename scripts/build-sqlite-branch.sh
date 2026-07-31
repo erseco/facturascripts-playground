@@ -37,6 +37,16 @@ if [ ! -d "$FORK_DIR/.git" ]; then
 else
   git -C "$FORK_DIR" fetch origin "$BASE_BRANCH" "$REF_BRANCH" >&2
 fi
+
+# Limpieza defensiva: si una ejecucion anterior aborto a media resolucion de
+# un conflicto de cherry-pick, el clon queda con CHERRY_PICK_HEAD y rutas sin
+# fusionar. Sin esto, la siguiente ejecucion moriria con un error crudo de
+# git en el primer checkout. Es un no-op si el clon esta impoluto.
+if [ -f "$FORK_DIR/.git/CHERRY_PICK_HEAD" ]; then
+  echo "Limpiando cherry-pick sin terminar de una ejecucion anterior..." >&2
+  git -C "$FORK_DIR" cherry-pick --abort >&2 || git -C "$FORK_DIR" reset --hard >&2
+fi
+
 git -C "$FORK_DIR" checkout -q -B "$REF_BRANCH" "origin/$REF_BRANCH" >&2
 
 MERGE_BASE=$(git -C "$FORK_DIR" merge-base "origin/$BASE_BRANCH" "$REF_BRANCH")
@@ -57,9 +67,21 @@ echo "Delta SQLite ($(echo "$DELTA_FILES" | wc -l | tr -d ' ') ficheros):" >&2
 echo "$DELTA_FILES" | sed 's/^/    /' >&2
 
 # 3. Descargar y extraer la release oficial.
+#    - Si el zip que ya hay en disco esta corrompido (descarga anterior
+#      cortada a mitad, o cualquier otro motivo) se descarta y se vuelve a
+#      descargar, en vez de dejar que reviente el unzip con un error opaco.
+#    - La descarga en si se hace a un temporal que se mueve al destino solo
+#      si curl termina bien, para que un corte de red no deje un zip a
+#      medias que el siguiente intento de por bueno.
+if [ -f "$ARCHIVE" ] && ! unzip -tqq "$ARCHIVE" >/dev/null 2>&1; then
+  echo "Zip corrupto en $ARCHIVE; se descarta y se vuelve a descargar." >&2
+  rm -f "$ARCHIVE"
+fi
 if [ ! -f "$ARCHIVE" ]; then
+  ARCHIVE_TMP="$ARCHIVE.tmp"
   curl --fail --location --silent --show-error \
-    "https://facturascripts.com/DownloadBuild/1/$FS_VERSION" --output "$ARCHIVE"
+    "https://facturascripts.com/DownloadBuild/1/$FS_VERSION" --output "$ARCHIVE_TMP"
+  mv "$ARCHIVE_TMP" "$ARCHIVE"
 fi
 if [ ! -f "$RELEASE_DIR/facturascripts/Core/Kernel.php" ]; then
   rm -rf "$RELEASE_DIR"
