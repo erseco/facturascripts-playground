@@ -83,11 +83,7 @@ fi
 if [ -d "$SOURCE_DIR/.git" ]; then
   SOURCE_COMMIT=$(git -C "$SOURCE_DIR" rev-parse HEAD)
   SOURCE_REPOSITORY=${FS_REF:-https://github.com/erseco/facturascripts.git}
-  if [ -n "${FS_VERSION:-}" ]; then
-    SOURCE_BRANCH="sqlite/$FS_VERSION"
-  else
-    SOURCE_BRANCH=${FS_REF_BRANCH:-feature/add-sqlite-support}
-  fi
+  SOURCE_BRANCH=$(git -C "$SOURCE_DIR" rev-parse --abbrev-ref HEAD)
 else
   echo "Se esperaba un clon de git en $SOURCE_DIR" >&2
   exit 1

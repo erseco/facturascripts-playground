@@ -19,8 +19,7 @@ bundle: prepare
 	FS_REF=$(FS_REF) FS_REF_BRANCH=$(FS_REF_BRANCH) npm run bundle
 
 sqlite-branch:
-	@test -n "$(VERSION)" || { echo 'Uso: make sqlite-branch VERSION=2026.41'; exit 1; }
-	FS_VERSION=$(VERSION) FS_REF=$(FS_REF) FS_REF_BRANCH=$(FS_REF_BRANCH) sh scripts/build-sqlite-branch.sh
+	FS_REF=$(FS_REF) FS_REF_BRANCH=$(FS_REF_BRANCH) sh scripts/build-sqlite-branch.sh
 
 test:
 	node --test tests/*.test.mjs
