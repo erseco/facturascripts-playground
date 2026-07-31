@@ -19,11 +19,13 @@ jobs:
       - uses: actions/checkout@v7
 
       - id: detect
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
 
-          if [[ -n "${{ inputs.version }}" ]]; then
-            matrix=$(jq -nc --arg v "${{ inputs.version }}" '{version: [$v]}')
+          if [[ -n "$INPUT_VERSION" ]]; then
+            matrix=$(jq -nc --arg v "$INPUT_VERSION" '{version: [$v]}')
           else
             stable=$(scripts/detect-official-versions.sh stable)
             beta=$(scripts/detect-official-versions.sh beta)
