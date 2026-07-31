@@ -18,6 +18,41 @@
 - Repo del fork: `https://github.com/erseco/facturascripts.git`. Rama de trabajo: `feature/add-sqlite-support`.
 - Estilo de la documentacion del repo: castellano sin tildes.
 
+## REDISENO (2026-07-31, posterior a la revision de la Tarea 3)
+
+**Las Tareas 1-3 estan hechas y revisadas, pero el esquema de ramas cambia.** Lo que sigue
+gobierna sobre cualquier mencion anterior a ramas `sqlite/<version>` en este documento: esas
+ramas se abandonan. Las Tareas 5 y 6 implementan el cambio; las Tareas 1-3 se conservan como
+registro de lo construido y se reaprovechan casi enteras.
+
+Esquema nuevo, dos canales:
+
+| Canal | Rama | Version | Como se mantiene |
+| --- | --- | --- | --- |
+| dev | `feature/add-sqlite-support` | 2026.51 | A mano. Es la rama de trabajo de siempre, con la PR #1908 abierta. **No se genera**: el build solo la clona. |
+| stable | `feature/add-sqlite-support-stable` | 2026.41 | **Generada**: zip oficial del canal stable + delta SQLite, con force-push. |
+
+Por que:
+
+- Upstream no tiene rama `stable` (solo `master` y ramas de feature sueltas), y la stable
+  vigente ni siquiera tiene tag, asi que una segunda PR no tendria destino. Una sola PR.
+- Al existir siempre las dos ramas, desaparece la ventana en la que `pages.yml` fallaba por
+  rama inexistente, y desaparece el podado de ramas por version.
+- La regeneracion solo afecta a una rama.
+
+Consecuencia asumida explicitamente: **el playground deja de ofrecer la beta oficial
+publicada (2026.5) y pasa a ofrecer el build de desarrollo (2026.51)**. Es un cambio de
+producto, no solo de fontaneria. El numero de version lo hace evidente al usuario.
+
+Regeneracion de la rama stable: se regenera cuando cambia la version oficial del canal
+stable **o** cuando cambia el delta. Para saberlo sin rehacer el trabajo cada noche, el
+commit generado lleva dos trailers, `Release:` y `Delta-Id:`, y el generador compara ambos
+con los del tip actual antes de decidir. `Delta-Id` es un hash determinista del contenido del
+delta, no del commit, para que no dependa de marcas de tiempo.
+
+Las ramas `sqlite/2026.41` y `sqlite/2026.5` quedan obsoletas, pero **no se borran hasta que
+el reemplazo funcione**.
+
 ## Correccion al spec
 
 El spec (`docs/superpowers/specs/2026-07-31-sqlite-version-branches-design.md`) dice, en "Workflow de generacion" paso 1 y en "Riesgos", que hay que descartar `vendor/` y `node_modules/` al importar el zip. **Es incorrecto** y se corrige en la Tarea 5: el zip oficial no incluye `composer.json`, `composer.lock` ni `package.json`, de modo que `build-facturascripts-bundle.sh` cae en la rama `elif [ ! -f "$FS_STAGE/vendor/autoload.php" ]` y aborta. Hay que conservarlos. Coste medido: 29 MB y 2155 ficheros por version, con deduplicacion de git entre versiones.
@@ -748,6 +783,284 @@ Expected: imprime `docs OK`.
 ```bash
 git add AGENTS.md docs/development.md docs/superpowers/specs/2026-07-31-sqlite-version-branches-design.md
 git commit -m "Documenta las ramas sqlite por version"
+```
+
+---
+
+### Task 5: Generador de la rama stable unica
+
+**Files:**
+- Modify: `scripts/build-sqlite-branch.sh` (rama destino fija, trailers, salto si no hay cambios)
+- Modify: `.github/workflows/sqlite-branches.yml` (un solo job, sin matriz)
+
+**Interfaces:**
+- Consumes: `scripts/detect-official-versions.sh stable` (Tarea 2).
+- Produces: `sh scripts/build-sqlite-branch.sh` sin argumentos genera o actualiza
+  `feature/add-sqlite-support-stable` en `$WORK_DIR/fork`. Imprime por stdout el SHA
+  resultante, o la cadena `SIN-CAMBIOS` si el tip ya estaba al dia. No hace push.
+
+- [ ] **Step 1: Reemplazar la seleccion de version y de rama destino**
+
+En `scripts/build-sqlite-branch.sh`, sustituir el bloque que exige `FS_VERSION` y calcula
+`TARGET_BRANCH="sqlite/$FS_VERSION"` por:
+
+```sh
+# La version sale del canal oficial stable, no de un argumento: la rama destino es
+# unica y siempre representa "la ultima stable + SQLite".
+FS_VERSION=${FS_VERSION:-$("$SCRIPT_DIR/detect-official-versions.sh" stable)}
+case "$FS_VERSION" in
+  *[!0-9.]*|'') echo "Version invalida: $FS_VERSION" >&2; exit 1 ;;
+esac
+
+TARGET_BRANCH=${FS_TARGET_BRANCH:-"feature/add-sqlite-support-stable"}
+```
+
+`FS_VERSION` se conserva como override opcional para poder regenerar contra una version
+concreta sin tocar el script.
+
+- [ ] **Step 2: Calcular el identificador del delta**
+
+Justo despues de calcular `DELTA_FILES`, anadir:
+
+```sh
+# Identificador determinista del CONTENIDO del delta: par ruta/blob de cada fichero,
+# hasheado. No depende de marcas de tiempo ni del SHA del commit sintetizado, asi que
+# dos ejecuciones con el mismo delta dan el mismo valor.
+DELTA_ID=$(
+  echo "$DELTA_FILES" | while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    printf '%s %s\n' "$f" "$(git -C "$FORK_DIR" rev-parse "$REF_BRANCH:$f" 2>/dev/null || echo ausente)"
+  done | git hash-object --stdin
+)
+```
+
+- [ ] **Step 3: Saltar el trabajo si el tip ya esta al dia**
+
+Antes de descargar el zip, anadir:
+
+```sh
+# Si la rama destino ya se genero con esta misma version y este mismo delta, no hay
+# nada que hacer. Evita reescribir la rama cada noche sin motivo.
+if git -C "$FORK_DIR" rev-parse --verify --quiet "origin/$TARGET_BRANCH" >/dev/null; then
+  TIP_MSG=$(git -C "$FORK_DIR" log -1 --format=%B "origin/$TARGET_BRANCH")
+  TIP_RELEASE=$(printf '%s\n' "$TIP_MSG" | sed -n 's/^Release: //p' | tail -1)
+  TIP_DELTA=$(printf '%s\n' "$TIP_MSG" | sed -n 's/^Delta-Id: //p' | tail -1)
+  if [ "$TIP_RELEASE" = "$FS_VERSION" ] && [ "$TIP_DELTA" = "$DELTA_ID" ]; then
+    echo "La rama $TARGET_BRANCH ya esta al dia (release $FS_VERSION, delta $DELTA_ID)." >&2
+    echo "SIN-CAMBIOS"
+    exit 0
+  fi
+fi
+```
+
+Para que `origin/$TARGET_BRANCH` exista, el `fetch` del paso 1 del script debe incluirla.
+Cambiar ese `fetch` para que no falle si la rama todavia no existe en el remoto:
+
+```sh
+  git -C "$FORK_DIR" fetch origin "$BASE_BRANCH" "$REF_BRANCH" >&2
+  git -C "$FORK_DIR" fetch origin "$TARGET_BRANCH" >&2 || true
+```
+
+- [ ] **Step 4: Escribir los trailers en el commit generado**
+
+En el commit de importacion de la release, sustituir su mensaje por uno con los trailers,
+de modo que el cherry-pick posterior los conserve en el historial de la rama. Como el
+cherry-pick anade su propio commit encima, los trailers deben ir en el commit FINAL: tras
+el cherry-pick, anadir
+
+```sh
+git -C "$FORK_DIR" commit -q --amend -m "SQLite sobre la release oficial $FS_VERSION
+
+Rama generada automaticamente por scripts/build-sqlite-branch.sh.
+No commitear a mano: se reescribe con force-push cuando cambia la
+release oficial del canal stable o cuando cambia el delta SQLite.
+
+Release: $FS_VERSION
+Delta-Id: $DELTA_ID"
+```
+
+- [ ] **Step 5: Verificar la generacion y el salto**
+
+Run: `sh scripts/build-sqlite-branch.sh`
+Expected: genera la rama, sin conflictos, los `php -l` limpios, y la ultima linea es un SHA.
+
+Run de nuevo, sin cambiar nada: `sh scripts/build-sqlite-branch.sh`
+Expected: **la segunda vez tambien regenera**, porque el salto compara contra
+`origin/$TARGET_BRANCH` y la rama aun no esta publicada. Es correcto. El salto se verifica de
+verdad en el Step 7, tras publicar.
+
+Comprobar los trailers:
+
+```bash
+git -C .cache/sqlite-branch/fork log -1 --format=%B feature/add-sqlite-support-stable
+```
+Expected: incluye una linea `Release: 2026.41` y otra `Delta-Id: <hash>`.
+
+- [ ] **Step 6: Publicar la rama**
+
+```bash
+cd .cache/sqlite-branch/fork
+git push --force git@github.com:erseco/facturascripts.git feature/add-sqlite-support-stable
+cd -
+git ls-remote --heads git@github.com:erseco/facturascripts.git 'feature/*'
+```
+Expected: lista `feature/add-sqlite-support` y `feature/add-sqlite-support-stable`.
+
+- [ ] **Step 7: Verificar que el salto funciona de verdad**
+
+Run: `sh scripts/build-sqlite-branch.sh`
+Expected: imprime por stderr `La rama feature/add-sqlite-support-stable ya esta al dia` y por
+stdout exactamente `SIN-CAMBIOS`. Este es el paso que demuestra que no se reescribe la rama
+sin motivo.
+
+- [ ] **Step 8: Simplificar el workflow a un solo job**
+
+En `.github/workflows/sqlite-branches.yml`: eliminar el job `versions` y la matriz, y dejar un
+unico job que genera y publica. Sustituir el guard `git ls-remote --exit-code` por la salida
+del propio script: si imprime `SIN-CAMBIOS`, no se publica.
+
+```yaml
+      - name: Generar la rama stable
+        id: gen
+        env:
+          WORK_DIR: ${{ runner.temp }}/sqlite-branch
+        run: |
+          set -euo pipefail
+          RESULT=$(sh scripts/build-sqlite-branch.sh)
+          echo "resultado=$RESULT" >> "$GITHUB_OUTPUT"
+          if [ "$RESULT" = "SIN-CAMBIOS" ]; then
+            echo "La rama ya estaba al dia; no hay nada que publicar."
+          fi
+
+      - name: Publicar la rama
+        if: steps.gen.outputs.resultado != 'SIN-CAMBIOS'
+        env:
+          WORK_DIR: ${{ runner.temp }}/sqlite-branch
+          TOKEN: ${{ secrets.FORK_PUSH_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd "$WORK_DIR/fork"
+          git push --force \
+            "https://x-access-token:${TOKEN}@github.com/erseco/facturascripts.git" \
+            feature/add-sqlite-support-stable
+```
+
+El smoke test se mantiene entre ambos, con la misma condicion que "Publicar", construyendo
+con `FS_CHANNEL=stable` (ver Tarea 6).
+
+- [ ] **Step 9: Validar y commitear**
+
+```bash
+sh -n scripts/build-sqlite-branch.sh
+python3 -c "import yaml; yaml.safe_load(open('.github/workflows/sqlite-branches.yml')); print('YAML valido')"
+git add scripts/build-sqlite-branch.sh .github/workflows/sqlite-branches.yml
+git commit -m "Genera una unica rama stable y la regenera solo si cambia el delta"
+```
+
+---
+
+### Task 6: El build consume canales, no versiones
+
+**Files:**
+- Modify: `scripts/fetch-facturascripts-source.sh` (canal en vez de version)
+- Modify: `scripts/build-facturascripts-bundle.sh` (procedencia por canal)
+- Modify: `.github/workflows/pages.yml` (matriz de canales)
+- Modify: `Makefile` (target `sqlite-branch` sin VERSION)
+
+**Interfaces:**
+- Consumes: las dos ramas del esquema nuevo.
+- Produces: `FS_CHANNEL=stable|dev` como variable que elige la fuente. `FS_VERSION` deja de
+  usarse en el build.
+
+- [ ] **Step 1: Sustituir FS_VERSION por FS_CHANNEL en la resolucion de fuente**
+
+En `scripts/fetch-facturascripts-source.sh`, sustituir el bloque de `FS_VERSION` por:
+
+```sh
+# El canal elige la rama. Ambas existen siempre, asi que el build nunca falla por una
+# rama que todavia no se ha generado.
+if [ -n "${FS_CHANNEL:-}" ]; then
+  case "$FS_CHANNEL" in
+    stable) REF_BRANCH="feature/add-sqlite-support-stable" ;;
+    dev)    REF_BRANCH="feature/add-sqlite-support" ;;
+    *) echo "Canal invalido: $FS_CHANNEL (usa stable o dev)" >&2; exit 1 ;;
+  esac
+fi
+```
+
+- [ ] **Step 2: Ajustar la procedencia del manifest**
+
+En `scripts/build-facturascripts-bundle.sh`, el bloque de procedencia deja de reconstruir el
+nombre de la rama: se lee del artefacto real, que es la unica fuente que no puede mentir.
+
+```sh
+if [ -d "$SOURCE_DIR/.git" ]; then
+  SOURCE_COMMIT=$(git -C "$SOURCE_DIR" rev-parse HEAD)
+  SOURCE_REPOSITORY=${FS_REF:-https://github.com/erseco/facturascripts.git}
+  SOURCE_BRANCH=$(git -C "$SOURCE_DIR" rev-parse --abbrev-ref HEAD)
+else
+  echo "Se esperaba un clon de git en $SOURCE_DIR" >&2
+  exit 1
+fi
+```
+
+Esto cierra de paso el minor M1 de la revision de la Tarea 3: el nombre ya no se deriva en
+dos sitios que puedan divergir en silencio.
+
+- [ ] **Step 3: Matriz de canales en pages.yml**
+
+En `.github/workflows/pages.yml`, el job `discover-versions` pasa a resolver las dos versiones
+asi: la stable del canal oficial, y la dev leyendo `Core/Kernel.php` de la rama de trabajo sin
+clonarla.
+
+```bash
+          stable=$(scripts/detect-official-versions.sh stable)
+          dev=$(curl --fail --silent --show-error --location \
+            'https://raw.githubusercontent.com/erseco/facturascripts/feature/add-sqlite-support/Core/Kernel.php' \
+            | sed -nE 's/.*return[[:space:]]+([0-9]+\.[0-9]+).*/\1/p' | head -1)
+          [ -n "$dev" ] || { echo "No se pudo leer la version de la rama dev" >&2; exit 1; }
+
+          matrix=$(jq -nc --arg s "$stable" --arg d "$dev" \
+            '{include: [{channel: "stable", version: $s}, {channel: "dev", version: $d}]}')
+          index=$(jq -nc --arg s "$stable" --arg d "$dev" \
+            '{schemaVersion: 1, default: $s, versions: [{version: $s, channels: ["stable"], label: ($s + " (Stable)")}, {version: $d, channels: ["dev"], label: ($d + " (Desarrollo)")}]}')
+```
+
+Y en `build-core`, `FS_VERSION: ${{ matrix.version }}` pasa a `FS_CHANNEL: ${{ matrix.channel }}`.
+`MANIFEST_FILE` sigue usando `${{ matrix.version }}`, porque el manifest se nombra por version.
+
+- [ ] **Step 4: Ajustar el target del Makefile**
+
+El target `sqlite-branch` ya no recibe `VERSION`:
+
+```make
+sqlite-branch:
+	FS_REF=$(FS_REF) FS_REF_BRANCH=$(FS_REF_BRANCH) sh scripts/build-sqlite-branch.sh
+```
+
+- [ ] **Step 5: Verificar los dos canales de verdad**
+
+```bash
+FS_CHANNEL=stable MANIFEST_FILE=stable.json UPDATE_CONFIG=false npm run bundle
+jq '{release, source}' assets/manifests/stable.json
+FS_CHANNEL=dev MANIFEST_FILE=dev.json UPDATE_CONFIG=false npm run bundle
+jq '{release, source}' assets/manifests/dev.json
+```
+Expected: el primero da `release` 2026.41 y `source.branch` `feature/add-sqlite-support-stable`;
+el segundo da `release` 2026.51 y `source.branch` `feature/add-sqlite-support`.
+
+- [ ] **Step 6: Comprobar que la ruta local sigue intacta**
+
+Run: `make bundle`
+Expected: funciona igual que antes, clonando `feature/add-sqlite-support` sin `FS_CHANNEL`.
+
+- [ ] **Step 7: Tests, lint y commit**
+
+```bash
+make test && make lint
+python3 -c "import yaml; yaml.safe_load(open('.github/workflows/pages.yml')); print('pages.yml valido')"
+git add scripts/ .github/workflows/pages.yml Makefile
+git commit -m "El build elige la fuente por canal en vez de por version"
 ```
 
 ---
