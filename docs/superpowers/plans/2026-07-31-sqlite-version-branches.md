@@ -541,7 +541,7 @@ estable entre canales como asume el diseno, y eso es informacion que cambia el p
 - [ ] **Step 1: Comprobar el estado de partida**
 
 Run: `grep -c "SQLITE_COMMIT" scripts/build-facturascripts-bundle.sh`
-Expected: `2` (la asignacion y los dos usos en las URLs; confirma que el bloque sigue ahi).
+Expected: `4` (la asignacion y los tres usos en las URLs; confirma que el bloque sigue ahi).
 
 - [ ] **Step 2: Reescribir la resolucion de fuente**
 
@@ -611,8 +611,8 @@ Expected: termina con `Bundle written to ...` y `Manifest written to ...`, sin m
 
 - [ ] **Step 7: Comprobar el manifest**
 
-Run: `jq '{release, sourceBranch, sourceCommit}' assets/manifests/2026.41.json`
-Expected: `release` es `2026.41`, `sourceBranch` es `sqlite/2026.41` y `sourceCommit` es un SHA real de 40 caracteres (no `official-2026.41`).
+Run: `jq '{release, source}' assets/manifests/2026.41.json`
+Expected: `release` es `2026.41`, y bajo la clave anidada `source` aparecen `branch` = `sqlite/2026.41` y `commit` = un SHA real de 40 caracteres (no `official-2026.41`). generate-manifest.mjs anida esas claves, no las deja planas.
 
 - [ ] **Step 8: Comprobar que el bundle lleva SQLite**
 
