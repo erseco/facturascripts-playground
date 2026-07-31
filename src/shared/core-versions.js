@@ -11,7 +11,7 @@ export function normalizeCoreVersions(payload = {}) {
     }
     seen.add(version);
     const channels = Array.isArray(entry.channels)
-      ? entry.channels.filter((channel) => ["stable", "beta"].includes(channel))
+      ? entry.channels.filter((channel) => ["stable", "dev"].includes(channel))
       : [];
     versions.push({
       version,

@@ -45,7 +45,17 @@ jobs:
           dev=$(curl --fail --silent --show-error --location \
             'https://raw.githubusercontent.com/erseco/facturascripts/feature/add-sqlite-support/Core/Kernel.php' \
             | sed -nE '/function version\(\)/,/return/ s/.*return[[:space:]]+([0-9]+\.[0-9]+).*/\1/p' | head -1)
-          [ -n "$dev" ] || { echo "No se pudo leer la version de la rama dev" >&2; exit 1; }
+          case "$dev" in
+            [0-9][0-9][0-9][0-9]|[0-9][0-9][0-9][0-9].*) ;;
+            *) echo "Version dev con formato inesperado: '$dev'" >&2; exit 1 ;;
+          esac
+
+          if [ "$stable" = "$dev" ]; then
+            echo "La version del canal stable ($stable) coincide con la de la rama dev." >&2
+            echo "Los manifests y artefactos se nombran por version, asi que ambos canales" >&2
+            echo "colisionarian. Hay que indexar por canal antes de poder desplegar esto." >&2
+            exit 1
+          fi
 
           matrix=$(jq -nc --arg s "$stable" --arg d "$dev" \
             '{include: [{channel: "stable", version: $s}, {channel: "dev", version: $d}]}')
