@@ -11,6 +11,15 @@ set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+
+# Huella del propio generador: si cambia este script (la denylist, como se
+# importa el zip, que entra en el arbol...) pero el delta y la release no
+# cambian, el salto de mas abajo NO debe confundir "nada que hacer" con "el
+# codigo que lo hizo esta desactualizado". $SCRIPT_DIR ya es absoluto (viene
+# de un cd), asi que el hash no depende de si se invoco con ruta relativa o
+# absoluta ni del directorio de trabajo actual.
+GENERATOR_ID=$(git hash-object "$SCRIPT_DIR/$(basename -- "$0")")
+
 WORK_DIR=${WORK_DIR:-"$REPO_DIR/.cache/sqlite-branch"}
 REF_URL=${FS_REF:-"https://github.com/erseco/facturascripts.git"}
 REF_BRANCH=${FS_REF_BRANCH:-"feature/add-sqlite-support"}
@@ -77,14 +86,20 @@ DELTA_ID=$(
   done | git hash-object --stdin
 )
 
-# Si la rama destino ya se genero con esta misma version y este mismo delta, no hay
-# nada que hacer. Evita reescribir la rama cada noche sin motivo.
+# Si la rama destino ya se genero con esta misma version, este mismo delta y
+# esta misma version del generador, no hay nada que hacer. Evita reescribir
+# la rama cada noche sin motivo. El Generator-Id es imprescindible aqui: sin
+# el, un cambio en la logica del script (denylist, importacion del zip...)
+# con delta y release identicos se quedaria pegado en SIN-CAMBIOS para
+# siempre, porque los otros dos trailers no se habrian movido.
 if git -C "$FORK_DIR" rev-parse --verify --quiet "origin/$TARGET_BRANCH" >/dev/null; then
   TIP_MSG=$(git -C "$FORK_DIR" log -1 --format=%B "origin/$TARGET_BRANCH")
   TIP_RELEASE=$(printf '%s\n' "$TIP_MSG" | sed -n 's/^Release: //p' | tail -1)
   TIP_DELTA=$(printf '%s\n' "$TIP_MSG" | sed -n 's/^Delta-Id: //p' | tail -1)
-  if [ "$TIP_RELEASE" = "$FS_VERSION" ] && [ "$TIP_DELTA" = "$DELTA_ID" ]; then
-    echo "La rama $TARGET_BRANCH ya esta al dia (release $FS_VERSION, delta $DELTA_ID)." >&2
+  TIP_GENERATOR=$(printf '%s\n' "$TIP_MSG" | sed -n 's/^Generator-Id: //p' | tail -1)
+  if [ "$TIP_RELEASE" = "$FS_VERSION" ] && [ "$TIP_DELTA" = "$DELTA_ID" ] \
+      && [ "$TIP_GENERATOR" = "$GENERATOR_ID" ]; then
+    echo "La rama $TARGET_BRANCH ya esta al dia (release $FS_VERSION, delta $DELTA_ID, generador $GENERATOR_ID)." >&2
     echo "SIN-CAMBIOS"
     exit 0
   fi
@@ -154,10 +169,12 @@ git -C "$FORK_DIR" commit -q --amend -m "SQLite sobre la release oficial $FS_VER
 
 Rama generada automaticamente por scripts/build-sqlite-branch.sh.
 No commitear a mano: se reescribe con force-push cuando cambia la
-release oficial del canal stable o cuando cambia el delta SQLite.
+release oficial del canal stable, cuando cambia el delta SQLite o
+cuando cambia el propio generador.
 
 Release: $FS_VERSION
-Delta-Id: $DELTA_ID"
+Delta-Id: $DELTA_ID
+Generator-Id: $GENERATOR_ID" >&2
 
 # 7. Verificacion: los mismos controles que hacia el parcheo, mas php -l.
 cd "$FORK_DIR"
