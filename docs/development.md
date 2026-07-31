@@ -116,3 +116,40 @@ Actualiza la documentacion en la misma PR si tocas:
 - el modelo de almacenamiento o manifiesto
 - el proceso de build del bundle
 - la navegacion de la shell o el routing del service worker
+
+## Canales SQLite
+
+El soporte SQLite todavia no esta en FacturaScripts upstream (PR
+[#1908](https://github.com/NeoRazorX/facturascripts/pull/1908), abierta desde marzo de 2026
+sin respuesta), asi que el playground construye desde dos ramas del fork
+`erseco/facturascripts`:
+
+| Canal | Rama | Como se mantiene |
+| --- | --- | --- |
+| `dev` | `feature/add-sqlite-support` | A mano. Es la rama de la PR. |
+| `stable` | `feature/add-sqlite-support-stable` | Generada, se reescribe con force-push. |
+
+La rama stable se genera con:
+
+    make sqlite-branch
+
+Es la release oficial del canal stable importada como commit, mas el delta SQLite aplicado
+con `git cherry-pick`. El merge a 3 bandas es deliberado: `patch` falla ante la deriva de
+contexto entre master y una release antigua, y `patch --fuzz` es peor, porque no falla sino
+que acierta mal y deja el build en verde con el codigo descolocado.
+
+El delta es `origin/master...feature/add-sqlite-support` restringido a `Core/`, menos una
+denylist declarada en el script. La denylist existe para dejar fuera lo que no es "habilitar
+SQLite" sino arreglos a codigo de master que la release todavia no incluye: esos conflictuan
+siempre, porque parchean codigo que no esta.
+
+El commit generado lleva tres trailers -- `Release:`, `Delta-Id:` y `Generator-Id:` -- y la
+rama solo se regenera si alguno cambia. `Generator-Id` es el hash del propio script: sin el,
+un cambio en la logica de generacion no llegaria nunca a desplegarse.
+
+Si el merge conflictua, el workflow falla y hay que resolverlo a mano.
+
+**Limitacion conocida:** los manifests se nombran por version, asi que si la version del
+canal stable llegara a coincidir con la de la rama dev, ambos colisionarian. El workflow lo
+detecta y aborta con un mensaje explicito. El arreglo de fondo es indexar los manifests por
+canal, pendiente.

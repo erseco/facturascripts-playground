@@ -2,6 +2,13 @@
 
 Fecha: 2026-07-31
 
+> **Nota posterior (2026-07-31).** Este diseno se implemento y despues se simplifico: en vez
+> de una rama por version publicada, hay dos ramas fijas por canal
+> (`feature/add-sqlite-support` para dev, `feature/add-sqlite-support-stable` para stable).
+> El razonamiento y las mediciones de este documento siguen siendo validos; lo que cambia es
+> que no hay proliferacion de ramas ni ventana en la que una rama no exista todavia.
+> Ver la seccion REDISENO del plan de implementacion.
+
 ## Problema
 
 El bundle del deploy (`pages.yml`, con `FS_VERSION` definido) parte de una release oficial
@@ -102,10 +109,12 @@ mezcla incorrecta en silencio.
 
 Programado, en el fork. Al detectar una version oficial nueva:
 
-1. Descarga el zip oficial y lo importa como commit, descartando `vendor/` y
-   `node_modules/` (el build los regenera con `composer install` y `npm install`).
-   Este paso es necesario porque **no todas las versiones tienen tag**: beta `2026.5`
-   corresponde a `v2026.5`, pero stable `2026.41` no existe como tag en upstream.
+1. Descarga el zip oficial y lo importa como commit **conservando `vendor/` y
+   `node_modules/`**: el zip no trae `composer.json` ni `package.json`, asi que sin ellos
+   el build se queda sin dependencias y aborta. Son 29 MB y 2155 ficheros por version,
+   con deduplicacion de git entre versiones. Este paso es necesario porque **no todas las
+   versiones tienen tag**: beta `2026.5` corresponde a `v2026.5`, pero stable `2026.41` no
+   existe como tag en upstream.
 2. Sintetiza el delta curado y lo aplica con merge a 3 bandas.
 3. Si aplica limpio, ejecuta la suite SQLite contra la rama resultante y, si esta verde,
    publica `sqlite/<version>`.
@@ -127,10 +136,17 @@ real que conviene registrar.
 
 ### Verificacion
 
-Es la ganancia principal frente a cualquier variante de parcheo en tiempo de build:
-`sqlite/<version>` es una rama de git real, asi que el CI puede correr contra ella la
-suite de tests con SQLite antes de publicar el bundle. Hoy el resultado del parcheo no lo
-prueba nadie.
+La release oficial no incluye `Test/` ni `phpunit.xml`, asi que **no se puede correr la
+suite de FacturaScripts contra la rama generada**. Copiar `Test/` del fork tampoco vale:
+sus tests prueban codigo de master que la release no contiene, asi que fallarian por
+construccion. La verificacion se hace en tres capas:
+
+1. Dentro de `scripts/build-sqlite-branch.sh`: los `grep` de que el enganche existe
+   (`use ...SqliteEngine;` y `case 'sqlite':`) mas `php -l` sobre los ficheros tocados.
+2. Smoke test en el workflow: construir el bundle desde la rama recien generada y
+   comprobar que contiene `SqliteEngine.php` y `SqliteQueries.php`. Es el consumidor real.
+3. Los tests e2e de Playwright del playground, que arrancan el bundle en un navegador.
+   Es la unica cobertura de integracion real, y ya existe.
 
 ## Fuera de alcance
 
@@ -147,6 +163,6 @@ prueba nadie.
   generacion.
 - **Conflictos reales**: cuando los haya, el bundle de esa version queda bloqueado hasta
   que se resuelvan a mano. Es el comportamiento buscado, pero conviene tenerlo presente.
-- **Importacion del zip**: hay que asegurarse de que el tree importado no arrastra
-  `vendor/` ni `node_modules/`, o el bundle crecera y el `composer install` posterior
-  podria comportarse de forma distinta.
+- **Tamano del repo**: cada rama de version anade el arbol completo de la release (29 MB,
+  2155 ficheros). Git deduplica los blobs identicos entre versiones, de modo que el coste
+  incremental es pequeno, pero conviene podar las ramas de versiones retiradas.

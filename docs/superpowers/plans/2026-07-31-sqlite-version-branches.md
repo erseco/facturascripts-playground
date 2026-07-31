@@ -1236,8 +1236,8 @@ trabajo con la PR #1908 abierta.
 ## Verificacion final
 
 - [ ] `make test` y `make lint` en verde.
-- [ ] `FS_VERSION=2026.41 npm run bundle` produce un bundle con `SqliteEngine.php` dentro.
-- [ ] `FS_VERSION=2026.5 npm run bundle` hace lo propio con la beta.
+- [ ] `FS_CHANNEL=stable npm run bundle` produce un bundle con `SqliteEngine.php` dentro.
+- [ ] `FS_CHANNEL=dev npm run bundle` hace lo propio con la rama de trabajo.
 - [ ] Un build local sin `FS_VERSION` (`make bundle`) sigue clonando `feature/add-sqlite-support` y funcionando como antes.
 - [ ] `grep -rn "SQLITE_COMMIT" scripts/` no devuelve nada.
 - [ ] Los tests e2e de Playwright pasan: `make test-e2e`.

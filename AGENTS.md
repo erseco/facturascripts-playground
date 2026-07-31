@@ -127,7 +127,17 @@ Relevant files:
 Default build source:
 
 - `FS_REF=https://github.com/erseco/facturascripts.git`
-- `FS_REF_BRANCH=feature/add-sqlite-support`
+- `FS_REF_BRANCH=feature/add-sqlite-support` (builds locales, sin `FS_CHANNEL`)
+
+Con `FS_CHANNEL` el build elige entre dos ramas fijas del fork:
+
+- `FS_CHANNEL=dev` -> `feature/add-sqlite-support`. Rama de trabajo, mantenida a mano,
+  con la PR abierta a upstream. El build solo la lee.
+- `FS_CHANNEL=stable` -> `feature/add-sqlite-support-stable`. Generada por
+  `scripts/build-sqlite-branch.sh`: release oficial del canal stable mas el delta SQLite
+  aplicado con merge a 3 bandas. Se reescribe con force-push, no commitear a mano.
+
+El build ya no parchea nada en tiempo de construccion.
 
 Bundle format: a single streaming `tar.zst` (`format: "tar.zst"`, `container: "tar"`,
 `codec: "zstd"` in the manifest). The build packs the staged core with

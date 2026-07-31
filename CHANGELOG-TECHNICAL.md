@@ -27,6 +27,37 @@ FacturaScripts cores whose classes and interfaces are not bytecode-compatible.
 
 ---
 
+## SQLite por canal en vez de por version
+
+**Date:** 2026-07-31
+**Context:** El parche SQLite se aplicaba en tiempo de build desde un commit fijado a mano,
+asi que los arreglos posteriores al pin no llegaban nunca al despliegue.
+
+### Decision
+
+- El playground construye desde dos ramas fijas del fork, elegidas por `FS_CHANNEL`:
+  `feature/add-sqlite-support` (dev) y `feature/add-sqlite-support-stable` (stable).
+- La rama stable se genera con `scripts/build-sqlite-branch.sh`: release oficial importada
+  como commit mas el delta SQLite aplicado con `git cherry-pick`. Se sustituye asi el
+  `patch` en tiempo de build, que fracasaba ante la deriva de contexto entre master y una
+  release antigua.
+- La regeneracion se decide comparando tres trailers del commit tip (`Release:`,
+  `Delta-Id:`, `Generator-Id:`), de modo que la rama no se reescribe sin motivo pero si
+  recoge cambios del delta o de la propia logica de generacion.
+- El bloque de parcheo de `build-facturascripts-bundle.sh` desaparece, y la procedencia del
+  manifest pasa a leerse del artefacto real en vez de reconstruirse.
+
+Esto **deja sin efecto** el punto de la entrada anterior que decia que los ZIP oficiales
+reciben la porcion runtime del commit SQLite fijado. Tambien cambia lo que se ofrece: el
+canal beta oficial se sustituye por el build de desarrollo de la rama de trabajo.
+
+**Files:** `.github/workflows/pages.yml`, `.github/workflows/sqlite-branches.yml`,
+`scripts/build-sqlite-branch.sh`, `scripts/detect-official-versions.sh`,
+`scripts/fetch-facturascripts-source.sh`, `scripts/build-facturascripts-bundle.sh`,
+`src/shared/core-versions.js`
+
+---
+
 ## Supported FacturaScripts release channels
 
 **Date:** 2026-07-22
