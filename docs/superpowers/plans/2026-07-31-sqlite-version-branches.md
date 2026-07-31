@@ -1241,3 +1241,44 @@ trabajo con la PR #1908 abierta.
 - [ ] Un build local sin `FS_VERSION` (`make bundle`) sigue clonando `feature/add-sqlite-support` y funcionando como antes.
 - [ ] `grep -rn "SQLITE_COMMIT" scripts/` no devuelve nada.
 - [ ] Los tests e2e de Playwright pasan: `make test-e2e`.
+
+---
+
+## Seguimiento pendiente
+
+Cerrado el trabajo, quedan vivos estos puntos. Los dos primeros solo los puede hacer una
+persona con acceso administrativo.
+
+### Requiere accion del propietario
+
+- **Crear el secreto `FORK_PUSH_TOKEN`** (fine-grained PAT con `Contents: read and write`
+  sobre `erseco/facturascripts`), con `gh secret set FORK_PUSH_TOKEN --repo
+  erseco/facturascripts-playground`. **Sin el, el workflow de generacion no puede publicar
+  la rama stable**: hace todo el trabajo y falla en el push. El guard anadido lo dice con un
+  mensaje claro en vez de fallar por autenticacion.
+- **Borrar las ramas obsoletas** del esquema anterior, que ya no referencia nada:
+  `git push --delete git@github.com:erseco/facturascripts.git sqlite/2026.41 sqlite/2026.5`.
+  Quedo pendiente porque el clasificador de permisos del agente bloqueo el borrado.
+
+### Mejoras identificadas y no hechas
+
+- **Indexar los manifests por canal en vez de por version.** Hoy, si la version del canal
+  stable llegara a coincidir con la de la rama dev, ambos colisionarian; el workflow lo
+  detecta y aborta con un mensaje explicito, pero el arreglo de fondo es este.
+- **`git ls-remote` sin reintento** en `pages.yml`: los `curl` que deciden el despliegue si
+  llevan `--retry 3`, estos dos no. Asimetria de robustez.
+- **`bundle-list.txt` no se borra** en `sqlite-branches.yml`, mientras que `pages.yml` si lo
+  hace. Cosmetico, el runner es efimero.
+- **`--abbrev-ref HEAD` devuelve `HEAD`** si se usa `FS_REF_BRANCH` con un tag (clon
+  detached), y eso acabaria en `source.branch` del manifest. Solo alcanzable por override
+  manual.
+
+### Contexto que conviene no perder
+
+El primer despliegue programado tras fusionar forzara un redeploy unico: el `versions.json`
+ya publicado no lleva `sourceCommit`, asi que no calzara con el indice nuevo. Es transitorio
+y correcto.
+
+El bug del smoke test (`tar | grep -q` abortando por SIGPIPE bajo `pipefail`) era **invisible
+en macOS**, porque bsdtar no propaga SIGPIPE como codigo 141. Solo se habria manifestado en
+CI. Si alguna vez se anade una comprobacion parecida, materializar el listado en un fichero.
