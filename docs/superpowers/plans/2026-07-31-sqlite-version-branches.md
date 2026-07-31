@@ -674,14 +674,10 @@ git commit -m "Consume las ramas sqlite/<version> y elimina el parcheo en tiempo
 
 ### Task 4: Documentacion y correccion del spec
 
-**Files:**
-- Modify: `AGENTS.md:126-131` (fuente por defecto del build)
-- Modify: `docs/development.md` (anadir seccion)
-- Modify: `docs/superpowers/specs/2026-07-31-sqlite-version-branches-design.md` (corregir vendor/node_modules)
-
-**Interfaces:**
-- Consumes: el comportamiento implementado en las Tareas 1-3.
-- Produces: nada que consuma codigo.
+> **OBSOLETO A PARTIR DE AQUI.** Los pasos de esta tarea se escribieron antes del
+> rediseno y describen ramas `sqlite/<version>` y la variable `FS_VERSION`, que ya no
+> existen. **Ejecuta en su lugar la Tarea 7**, que cubre lo mismo actualizado y ampliado.
+> Se conserva este texto como registro de lo que se planifico.
 
 - [ ] **Step 1: Actualizar AGENTS.md**
 
@@ -1062,6 +1058,178 @@ python3 -c "import yaml; yaml.safe_load(open('.github/workflows/pages.yml')); pr
 git add scripts/ .github/workflows/pages.yml Makefile
 git commit -m "El build elige la fuente por canal en vez de por version"
 ```
+
+---
+
+### Task 7: Documentacion del esquema de canales y retirada de lo viejo
+
+**Files:**
+- Modify: `AGENTS.md:127-131` (fuente por defecto del build)
+- Modify: `docs/development.md` (seccion nueva)
+- Modify: `CHANGELOG-TECHNICAL.md` (entrada nueva, no reescribir la vieja)
+- Modify: `docs/superpowers/specs/2026-07-31-sqlite-version-branches-design.md`
+- Modify: este plan, seccion "Verificacion final"
+
+**Interfaces:**
+- Consumes: el comportamiento de las Tareas 5 y 6.
+- Produces: nada que consuma codigo.
+
+- [ ] **Step 1: Actualizar AGENTS.md**
+
+Sustituir el bloque "Default build source" por:
+
+```markdown
+Default build source:
+
+- `FS_REF=https://github.com/erseco/facturascripts.git`
+- `FS_REF_BRANCH=feature/add-sqlite-support` (builds locales, sin `FS_CHANNEL`)
+
+Con `FS_CHANNEL` el build elige entre dos ramas fijas del fork:
+
+- `FS_CHANNEL=dev` -> `feature/add-sqlite-support`. Rama de trabajo, mantenida a mano,
+  con la PR abierta a upstream. El build solo la lee.
+- `FS_CHANNEL=stable` -> `feature/add-sqlite-support-stable`. Generada por
+  `scripts/build-sqlite-branch.sh`: release oficial del canal stable mas el delta SQLite
+  aplicado con merge a 3 bandas. Se reescribe con force-push, no commitear a mano.
+
+El build ya no parchea nada en tiempo de construccion.
+```
+
+- [ ] **Step 2: Documentar el flujo en development.md**
+
+Anadir al final de `docs/development.md`:
+
+```markdown
+## Canales SQLite
+
+El soporte SQLite todavia no esta en FacturaScripts upstream (PR
+[#1908](https://github.com/NeoRazorX/facturascripts/pull/1908), abierta desde marzo de 2026
+sin respuesta), asi que el playground construye desde dos ramas del fork
+`erseco/facturascripts`:
+
+| Canal | Rama | Como se mantiene |
+| --- | --- | --- |
+| `dev` | `feature/add-sqlite-support` | A mano. Es la rama de la PR. |
+| `stable` | `feature/add-sqlite-support-stable` | Generada, se reescribe con force-push. |
+
+La rama stable se genera con:
+
+    make sqlite-branch
+
+Es la release oficial del canal stable importada como commit, mas el delta SQLite aplicado
+con `git cherry-pick`. El merge a 3 bandas es deliberado: `patch` falla ante la deriva de
+contexto entre master y una release antigua, y `patch --fuzz` es peor, porque no falla sino
+que acierta mal y deja el build en verde con el codigo descolocado.
+
+El delta es `origin/master...feature/add-sqlite-support` restringido a `Core/`, menos una
+denylist declarada en el script. La denylist existe para dejar fuera lo que no es "habilitar
+SQLite" sino arreglos a codigo de master que la release todavia no incluye: esos conflictuan
+siempre, porque parchean codigo que no esta.
+
+El commit generado lleva tres trailers -- `Release:`, `Delta-Id:` y `Generator-Id:` -- y la
+rama solo se regenera si alguno cambia. `Generator-Id` es el hash del propio script: sin el,
+un cambio en la logica de generacion no llegaria nunca a desplegarse.
+
+Si el merge conflictua, el workflow falla y hay que resolverlo a mano.
+
+**Limitacion conocida:** los manifests se nombran por version, asi que si la version del
+canal stable llegara a coincidir con la de la rama dev, ambos colisionarian. El workflow lo
+detecta y aborta con un mensaje explicito. El arreglo de fondo es indexar los manifests por
+canal, pendiente.
+```
+
+- [ ] **Step 3: Anadir una entrada nueva al CHANGELOG**
+
+`CHANGELOG-TECHNICAL.md` es un registro de decisiones fechadas: la entrada
+"Supported FacturaScripts release channels" del 2026-07-22 describe correctamente lo que se
+decidio entonces y **no se reescribe**. Anadir una entrada nueva encima de ella:
+
+```markdown
+## SQLite por canal en vez de por version
+
+**Date:** 2026-07-31
+**Context:** El parche SQLite se aplicaba en tiempo de build desde un commit fijado a mano,
+asi que los arreglos posteriores al pin no llegaban nunca al despliegue.
+
+### Decision
+
+- El playground construye desde dos ramas fijas del fork, elegidas por `FS_CHANNEL`:
+  `feature/add-sqlite-support` (dev) y `feature/add-sqlite-support-stable` (stable).
+- La rama stable se genera con `scripts/build-sqlite-branch.sh`: release oficial importada
+  como commit mas el delta SQLite aplicado con `git cherry-pick`. Se sustituye asi el
+  `patch` en tiempo de build, que fracasaba ante la deriva de contexto entre master y una
+  release antigua.
+- La regeneracion se decide comparando tres trailers del commit tip (`Release:`,
+  `Delta-Id:`, `Generator-Id:`), de modo que la rama no se reescribe sin motivo pero si
+  recoge cambios del delta o de la propia logica de generacion.
+- El bloque de parcheo de `build-facturascripts-bundle.sh` desaparece, y la procedencia del
+  manifest pasa a leerse del artefacto real en vez de reconstruirse.
+
+Esto **deja sin efecto** el punto de la entrada anterior que decia que los ZIP oficiales
+reciben la porcion runtime del commit SQLite fijado. Tambien cambia lo que se ofrece: el
+canal beta oficial se sustituye por el build de desarrollo de la rama de trabajo.
+
+**Files:** `.github/workflows/pages.yml`, `.github/workflows/sqlite-branches.yml`,
+`scripts/build-sqlite-branch.sh`, `scripts/detect-official-versions.sh`,
+`scripts/fetch-facturascripts-source.sh`, `scripts/build-facturascripts-bundle.sh`,
+`src/shared/core-versions.js`
+```
+
+- [ ] **Step 4: Poner el spec al dia**
+
+En `docs/superpowers/specs/2026-07-31-sqlite-version-branches-design.md`, el documento
+describe el esquema de ramas por version, que se abandono. Anadir al principio, justo
+despues de la fecha:
+
+```markdown
+> **Nota posterior (2026-07-31).** Este diseno se implemento y despues se simplifico: en vez
+> de una rama por version publicada, hay dos ramas fijas por canal
+> (`feature/add-sqlite-support` para dev, `feature/add-sqlite-support-stable` para stable).
+> El razonamiento y las mediciones de este documento siguen siendo validos; lo que cambia es
+> que no hay proliferacion de ramas ni ventana en la que una rama no exista todavia.
+> Ver la seccion REDISENO del plan de implementacion.
+```
+
+Y aplicar las tres correcciones ya identificadas: conservar `vendor/` y `node_modules/` al
+importar el zip (el zip no trae `composer.json` ni `package.json`), sustituir el riesgo del
+podado de ramas por el del tamano del repo, y reescribir la seccion "Verificacion", que
+prometia correr la suite de tests contra la rama generada -- inviable, porque la release
+oficial no incluye `Test/` ni `phpunit.xml`.
+
+- [ ] **Step 5: Actualizar la verificacion final del plan**
+
+En este mismo plan, la seccion "Verificacion final" cita `FS_VERSION=2026.41` y
+`FS_VERSION=2026.5`, que ya no se leen. Sustituir esas dos lineas por las equivalentes con
+`FS_CHANNEL=stable` y `FS_CHANNEL=dev`, y la de `grep -rn "SQLITE_COMMIT"` se conserva.
+
+- [ ] **Step 6: Verificar que la documentacion construye**
+
+Run: `mkdocs build --strict -d /tmp/mkdocs-check && echo "docs OK" && rm -rf /tmp/mkdocs-check`
+Expected: imprime `docs OK`.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add AGENTS.md docs/development.md CHANGELOG-TECHNICAL.md docs/superpowers/
+git commit -m "Documenta el esquema de canales SQLite"
+```
+
+- [ ] **Step 8: Retirar las ramas obsoletas**
+
+Solo despues de que todo lo anterior este verificado. Las ramas `sqlite/2026.41` y
+`sqlite/2026.5` quedaron del esquema anterior y ya no las usa nada:
+
+```bash
+git ls-remote --heads git@github.com:erseco/facturascripts.git 'sqlite/*'
+git push --delete git@github.com:erseco/facturascripts.git sqlite/2026.41 sqlite/2026.5
+git ls-remote --heads git@github.com:erseco/facturascripts.git
+```
+Expected: la primera orden las lista, la ultima muestra que solo quedan
+`feature/add-sqlite-support`, `feature/add-sqlite-support-stable`, `master` y las demas ramas
+preexistentes del fork.
+
+**No borres ninguna otra rama.** En particular `feature/add-sqlite-support` es la rama de
+trabajo con la PR #1908 abierta.
 
 ---
 
