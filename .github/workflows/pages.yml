@@ -34,26 +34,15 @@ jobs:
       stable: ${{ steps.versions.outputs.stable }}
       index: ${{ steps.versions.outputs.index }}
     steps:
+      - uses: actions/checkout@v7
+
       - name: Read official supported channels
         id: versions
         run: |
           set -euo pipefail
 
-          channel_version() {
-            local channel="$1" headers version
-            headers=$(curl --fail --silent --show-error --location --head \
-              "https://facturascripts.com/DownloadBuild/1/${channel}")
-            version=$(sed -nE 's/.*filename="?CORE-([0-9]{4}(\.[0-9]+)?)\.zip"?.*/\1/ip' \
-              <<< "$headers" | tail -1)
-            [[ "$version" =~ ^[0-9]{4}(\.[0-9]+)?$ ]] || {
-              echo "Could not detect FacturaScripts ${channel}" >&2
-              exit 1
-            }
-            printf '%s' "$version"
-          }
-
-          stable=$(channel_version stable)
-          beta=$(channel_version beta)
+          stable=$(scripts/detect-official-versions.sh stable)
+          beta=$(scripts/detect-official-versions.sh beta)
           if [[ "$stable" == "$beta" ]]; then
             matrix=$(jq -nc --arg version "$stable" \
               '{include: [{version: $version, channels: "stable,beta"}]}')

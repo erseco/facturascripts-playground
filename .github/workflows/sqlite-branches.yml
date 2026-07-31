@@ -1,0 +1,117 @@
+name: SQLite branches
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version concreta a generar (vacio = stable y beta)"
+        required: false
+        type: string
+
+jobs:
+  versions:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.detect.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: detect
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${{ inputs.version }}" ]]; then
+            matrix=$(jq -nc --arg v "${{ inputs.version }}" '{version: [$v]}')
+          else
+            stable=$(scripts/detect-official-versions.sh stable)
+            beta=$(scripts/detect-official-versions.sh beta)
+            if [[ "$stable" == "$beta" ]]; then
+              matrix=$(jq -nc --arg s "$stable" '{version: [$s]}')
+            else
+              matrix=$(jq -nc --arg s "$stable" --arg b "$beta" '{version: [$s, $b]}')
+            fi
+          fi
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "Versiones a generar: $matrix"
+
+  build:
+    needs: versions
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.versions.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          tools: composer
+
+      - uses: actions/setup-node@v4
+        with:
+          # build-tar-zst-bundle.mjs necesita el zstd nativo de node:zlib.
+          node-version: 24
+          cache: npm
+
+      - name: Comprobar si la rama ya esta al dia
+        id: check
+        env:
+          FS_VERSION: ${{ matrix.version }}
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads \
+              https://github.com/erseco/facturascripts.git "sqlite/$FS_VERSION" >/dev/null 2>&1; then
+            echo "existe=true" >> "$GITHUB_OUTPUT"
+            echo "La rama sqlite/$FS_VERSION ya existe."
+          else
+            echo "existe=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generar la rama
+        if: steps.check.outputs.existe == 'false'
+        env:
+          FS_VERSION: ${{ matrix.version }}
+          WORK_DIR: ${{ runner.temp }}/sqlite-branch
+        run: sh scripts/build-sqlite-branch.sh
+
+      - name: Smoke test - construir el bundle desde la rama
+        if: steps.check.outputs.existe == 'false'
+        env:
+          VERSION: ${{ matrix.version }}
+          MANIFEST_FILE: smoke-${{ matrix.version }}.json
+          UPDATE_CONFIG: "false"
+        run: |
+          set -euo pipefail
+          npm install
+          # Se construye contra el clon local, que ya tiene la rama generada, y
+          # por la ruta de git (FS_REF + FS_REF_BRANCH) en vez de por FS_VERSION.
+          # Asi el smoke test no depende de la Tarea 3: funciona igual antes y
+          # despues de que fetch-facturascripts-source.sh aprenda a resolver
+          # sqlite/<version>.
+          FS_REF="${{ runner.temp }}/sqlite-branch/fork" \
+          FS_REF_BRANCH="sqlite/$VERSION" \
+            npm run bundle
+          test -f "assets/manifests/smoke-${VERSION}.json"
+          tar --use-compress-program=unzstd -tf \
+            assets/facturascripts/facturascripts-core-*.tar.zst \
+            | grep -q 'Core/Base/DataBase/SqliteEngine.php'
+          tar --use-compress-program=unzstd -tf \
+            assets/facturascripts/facturascripts-core-*.tar.zst \
+            | grep -q 'Core/Base/DataBase/SqliteQueries.php'
+          echo "Smoke test correcto: el bundle lleva el soporte SQLite."
+
+      - name: Publicar la rama
+        if: steps.check.outputs.existe == 'false'
+        env:
+          FS_VERSION: ${{ matrix.version }}
+          WORK_DIR: ${{ runner.temp }}/sqlite-branch
+          TOKEN: ${{ secrets.FORK_PUSH_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd "$WORK_DIR/fork"
+          git push "https://x-access-token:${TOKEN}@github.com/erseco/facturascripts.git" \
+            "sqlite/$FS_VERSION"
+          echo "Publicada sqlite/$FS_VERSION"
