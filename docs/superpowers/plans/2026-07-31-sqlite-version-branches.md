@@ -371,11 +371,17 @@ jobs:
       - uses: actions/checkout@v7
 
       - id: detect
+        # El input se pasa por `env:` y se lee como `$INPUT_VERSION`. Interpolar
+        # `${{ inputs.version }}` dentro del `run:` seria inyeccion de comandos:
+        # GitHub sustituye el texto antes de que el shell lo vea, asi que un
+        # valor con comillas o backticks ejecutaria codigo en el runner.
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
 
-          if [[ -n "${{ inputs.version }}" ]]; then
-            matrix=$(jq -nc --arg v "${{ inputs.version }}" '{version: [$v]}')
+          if [[ -n "$INPUT_VERSION" ]]; then
+            matrix=$(jq -nc --arg v "$INPUT_VERSION" '{version: [$v]}')
           else
             stable=$(scripts/detect-official-versions.sh stable)
             beta=$(scripts/detect-official-versions.sh beta)
