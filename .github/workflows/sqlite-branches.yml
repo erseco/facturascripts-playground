@@ -88,13 +88,14 @@ jobs:
         run: |
           set -euo pipefail
           npm install
-          # Se construye contra el clon local, que ya tiene la rama generada, y
-          # por la ruta de git (FS_REF + FS_REF_BRANCH) en vez de por FS_VERSION.
-          # Asi el smoke test no depende de la Tarea 3: funciona igual antes y
-          # despues de que fetch-facturascripts-source.sh aprenda a resolver
-          # sqlite/<version>.
+          # Se construye con FS_VERSION, la misma variable que usa el deploy
+          # publico, para ejercitar de verdad la linea de
+          # fetch-facturascripts-source.sh que resuelve sqlite/<version>.
+          # FS_REF apunta al clon local (que ya tiene la rama generada) en vez
+          # de al fork remoto porque "Publicar la rama" todavia no se ha
+          # ejecutado en este punto del job.
           FS_REF="${{ runner.temp }}/sqlite-branch/fork" \
-          FS_REF_BRANCH="sqlite/$VERSION" \
+          FS_VERSION="$VERSION" \
             npm run bundle
           test -f "assets/manifests/smoke-${VERSION}.json"
           tar --use-compress-program=unzstd -tf \
