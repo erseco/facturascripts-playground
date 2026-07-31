@@ -150,6 +150,11 @@ El commit generado lleva tres trailers -- `Release:`, `Delta-Id:` y `Generator-I
 rama solo se regenera si alguno cambia. `Generator-Id` es el hash del propio script: sin el,
 un cambio en la logica de generacion no llegaria nunca a desplegarse.
 
+El workflow `.github/workflows/sqlite-branches.yml` publica la rama generada con el secreto
+`FORK_PUSH_TOKEN`, que necesita permiso de escritura de contenidos sobre
+`erseco/facturascripts`. Sin ese secreto la generacion automatica no puede publicar y el
+workflow aborta antes del push.
+
 Si el merge conflictua, el workflow falla y hay que resolverlo a mano.
 
 **Limitacion conocida:** los manifests se nombran por version, asi que si la version del

@@ -42,13 +42,24 @@ jobs:
           set -euo pipefail
 
           stable=$(scripts/detect-official-versions.sh stable)
-          dev=$(curl --fail --silent --show-error --location \
+          dev=$(curl --fail --silent --show-error --location --retry 3 \
             'https://raw.githubusercontent.com/erseco/facturascripts/feature/add-sqlite-support/Core/Kernel.php' \
             | sed -nE '/function version\(\)/,/return/ s/.*return[[:space:]]+([0-9]+\.[0-9]+).*/\1/p' | head -1)
           case "$dev" in
             [0-9][0-9][0-9][0-9]|[0-9][0-9][0-9][0-9].*) ;;
             *) echo "Version dev con formato inesperado: '$dev'" >&2; exit 1 ;;
           esac
+
+          # Huella de la fuente. Sin ella, el indice solo lleva numeros de
+          # version, asi que un arreglo de SQLite que no toca Kernel.php::version()
+          # regenera la rama stable pero produce un indice identico al desplegado
+          # y la puerta `changed` de mas abajo cancelaria el deploy en verde.
+          stable_sha=$(git ls-remote https://github.com/erseco/facturascripts.git \
+            refs/heads/feature/add-sqlite-support-stable | cut -f1)
+          dev_sha=$(git ls-remote https://github.com/erseco/facturascripts.git \
+            refs/heads/feature/add-sqlite-support | cut -f1)
+          [ -n "$stable_sha" ] && [ -n "$dev_sha" ] || {
+            echo "No se pudieron resolver los tips de las ramas del fork" >&2; exit 1; }
 
           if [ "$stable" = "$dev" ]; then
             echo "La version del canal stable ($stable) coincide con la de la rama dev." >&2
@@ -60,11 +71,12 @@ jobs:
           matrix=$(jq -nc --arg s "$stable" --arg d "$dev" \
             '{include: [{channel: "stable", version: $s}, {channel: "dev", version: $d}]}')
           index=$(jq -nc --arg s "$stable" --arg d "$dev" \
-            '{schemaVersion: 1, default: $s, versions: [{version: $s, channels: ["stable"], label: ($s + " (Stable)")}, {version: $d, channels: ["dev"], label: ($d + " (Desarrollo)")}]}')
+            --arg ssha "$stable_sha" --arg dsha "$dev_sha" \
+            '{schemaVersion: 1, default: $s, versions: [{version: $s, channels: ["stable"], label: ($s + " (Estable)"), sourceCommit: $ssha}, {version: $d, channels: ["dev"], label: ($d + " (Desarrollo)"), sourceCommit: $dsha}]}')
 
           changed=true
           if [[ "$GITHUB_EVENT_NAME" == schedule ]]; then
-            deployed=$(curl --fail --silent --show-error \
+            deployed=$(curl --fail --silent --show-error --retry 3 \
               'https://facturascripts-playground.pages.dev/assets/manifests/versions.json' || true)
             if [[ -n "$deployed" ]] && \
               [[ "$(jq -S -c . <<< "$deployed")" == "$(jq -S -c . <<< "$index")" ]]; then
@@ -121,6 +133,16 @@ jobs:
           jq -e --arg version "${{ matrix.version }}" \
             '.release == $version and .bundle.format == "tar.zst" and .bundle.fileCount > 0' \
             "assets/manifests/${{ matrix.version }}.json"
+          # El manifiesto describe el bundle, no su contenido: sin esto se
+          # desplegaria un core sin SQLite sin una queja. Vale para los dos
+          # canales, porque este step corre una vez por entrada de la matriz.
+          # El listado se materializa en un fichero: `tar | grep -q` mata a tar
+          # con SIGPIPE en el primer match y el step fallaria con el bundle bien.
+          tar --use-compress-program=unzstd -tf \
+            assets/facturascripts/facturascripts-core-*.tar.zst > bundle-list.txt
+          grep -q 'Core/Base/DataBase/SqliteEngine.php' bundle-list.txt
+          grep -q 'Core/Base/DataBase/SqliteQueries.php' bundle-list.txt
+          rm -f bundle-list.txt
 
       - uses: actions/upload-artifact@v7
         with:

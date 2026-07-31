@@ -13,7 +13,7 @@ case "$CHANNEL" in
   *) echo "Uso: $0 stable|beta" >&2; exit 1 ;;
 esac
 
-HEADERS=$(curl --fail --silent --show-error --location --head \
+HEADERS=$(curl --fail --silent --show-error --location --retry 3 --head \
   "https://facturascripts.com/DownloadBuild/1/$CHANNEL")
 
 VERSION=$(printf '%s\n' "$HEADERS" \

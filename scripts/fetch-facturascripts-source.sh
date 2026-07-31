@@ -23,6 +23,10 @@ fi
 if [ ! -d "$CLONE_DIR/.git" ]; then
   git clone --depth 1 --branch "$REF_BRANCH" "$REF_URL" "$CLONE_DIR" >&2
 else
+  # Reajustar el remoto antes del fetch: sin esto un FS_REF distinto al del clon
+  # cacheado se descartaria en silencio y se construiria del origen equivocado.
+  # Lo usa el smoke test de la rama generada, que apunta FS_REF a un clon local.
+  git -C "$CLONE_DIR" remote set-url origin "$REF_URL" >&2
   git -C "$CLONE_DIR" fetch --depth 1 origin "$REF_BRANCH" >&2
   git -C "$CLONE_DIR" checkout -B "$REF_BRANCH" FETCH_HEAD >&2
 fi

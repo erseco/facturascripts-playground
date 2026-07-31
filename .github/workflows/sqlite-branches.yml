@@ -52,12 +52,14 @@ jobs:
           FS_CHANNEL="stable" \
             npm run bundle
           test -f "assets/manifests/smoke-stable.json"
+          # El listado se materializa en un fichero en vez de encadenar
+          # `tar | grep -q`: grep sale en el primer match, tar recibe SIGPIPE y
+          # sale 141, y `pipefail` + `set -e` abortarian el step con el bundle
+          # correcto.
           tar --use-compress-program=unzstd -tf \
-            assets/facturascripts/facturascripts-core-*.tar.zst \
-            | grep -q 'Core/Base/DataBase/SqliteEngine.php'
-          tar --use-compress-program=unzstd -tf \
-            assets/facturascripts/facturascripts-core-*.tar.zst \
-            | grep -q 'Core/Base/DataBase/SqliteQueries.php'
+            assets/facturascripts/facturascripts-core-*.tar.zst > bundle-list.txt
+          grep -q 'Core/Base/DataBase/SqliteEngine.php' bundle-list.txt
+          grep -q 'Core/Base/DataBase/SqliteQueries.php' bundle-list.txt
           echo "Smoke test correcto: el bundle lleva el soporte SQLite."
 
       - name: Publicar la rama
@@ -67,6 +69,10 @@ jobs:
           TOKEN: ${{ secrets.FORK_PUSH_TOKEN }}
         run: |
           set -euo pipefail
+          # `set -u` no salta con un secreto ausente (la variable existe, vacia),
+          # asi que el push moriria con un error de autenticacion opaco al final
+          # de un job que ya ha hecho todo el trabajo.
+          : "${TOKEN:?Falta el secreto FORK_PUSH_TOKEN en el repositorio}"
           cd "$WORK_DIR/fork"
           git push --force \
             "https://x-access-token:${TOKEN}@github.com/erseco/facturascripts.git" \
