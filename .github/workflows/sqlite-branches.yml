@@ -3,47 +3,11 @@ name: SQLite branches
 on:
   schedule:
     - cron: "17 3 * * *"
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Version concreta a generar (vacio = stable y beta)"
-        required: false
-        type: string
+  workflow_dispatch: {}
 
 jobs:
-  versions:
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.detect.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v7
-
-      - id: detect
-        env:
-          INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          set -euo pipefail
-
-          if [[ -n "$INPUT_VERSION" ]]; then
-            matrix=$(jq -nc --arg v "$INPUT_VERSION" '{version: [$v]}')
-          else
-            stable=$(scripts/detect-official-versions.sh stable)
-            beta=$(scripts/detect-official-versions.sh beta)
-            if [[ "$stable" == "$beta" ]]; then
-              matrix=$(jq -nc --arg s "$stable" '{version: [$s]}')
-            else
-              matrix=$(jq -nc --arg s "$stable" --arg b "$beta" '{version: [$s, $b]}')
-            fi
-          fi
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-          echo "Versiones a generar: $matrix"
-
   build:
-    needs: versions
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.versions.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v7
 
@@ -58,46 +22,36 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Comprobar si la rama ya esta al dia
-        id: check
+      - name: Generar la rama stable
+        id: gen
         env:
-          FS_VERSION: ${{ matrix.version }}
+          WORK_DIR: ${{ runner.temp }}/sqlite-branch
         run: |
           set -euo pipefail
-          if git ls-remote --exit-code --heads \
-              https://github.com/erseco/facturascripts.git "sqlite/$FS_VERSION" >/dev/null 2>&1; then
-            echo "existe=true" >> "$GITHUB_OUTPUT"
-            echo "La rama sqlite/$FS_VERSION ya existe."
-          else
-            echo "existe=false" >> "$GITHUB_OUTPUT"
+          RESULT=$(sh scripts/build-sqlite-branch.sh)
+          echo "resultado=$RESULT" >> "$GITHUB_OUTPUT"
+          if [ "$RESULT" = "SIN-CAMBIOS" ]; then
+            echo "La rama ya estaba al dia; no hay nada que publicar."
           fi
 
-      - name: Generar la rama
-        if: steps.check.outputs.existe == 'false'
-        env:
-          FS_VERSION: ${{ matrix.version }}
-          WORK_DIR: ${{ runner.temp }}/sqlite-branch
-        run: sh scripts/build-sqlite-branch.sh
-
       - name: Smoke test - construir el bundle desde la rama
-        if: steps.check.outputs.existe == 'false'
+        if: steps.gen.outputs.resultado != 'SIN-CAMBIOS'
         env:
-          VERSION: ${{ matrix.version }}
-          MANIFEST_FILE: smoke-${{ matrix.version }}.json
+          WORK_DIR: ${{ runner.temp }}/sqlite-branch
+          MANIFEST_FILE: smoke-stable.json
           UPDATE_CONFIG: "false"
         run: |
           set -euo pipefail
           npm install
-          # Se construye con FS_VERSION, la misma variable que usa el deploy
-          # publico, para ejercitar de verdad la linea de
-          # fetch-facturascripts-source.sh que resuelve sqlite/<version>.
+          # Se construye con FS_CHANNEL=stable, la misma variable que usa el
+          # deploy publico, para ejercitar de verdad la resolucion del canal.
           # FS_REF apunta al clon local (que ya tiene la rama generada) en vez
           # de al fork remoto porque "Publicar la rama" todavia no se ha
           # ejecutado en este punto del job.
-          FS_REF="${{ runner.temp }}/sqlite-branch/fork" \
-          FS_VERSION="$VERSION" \
+          FS_REF="$WORK_DIR/fork" \
+          FS_CHANNEL="stable" \
             npm run bundle
-          test -f "assets/manifests/smoke-${VERSION}.json"
+          test -f "assets/manifests/smoke-stable.json"
           tar --use-compress-program=unzstd -tf \
             assets/facturascripts/facturascripts-core-*.tar.zst \
             | grep -q 'Core/Base/DataBase/SqliteEngine.php'
@@ -107,14 +61,13 @@ jobs:
           echo "Smoke test correcto: el bundle lleva el soporte SQLite."
 
       - name: Publicar la rama
-        if: steps.check.outputs.existe == 'false'
+        if: steps.gen.outputs.resultado != 'SIN-CAMBIOS'
         env:
-          FS_VERSION: ${{ matrix.version }}
           WORK_DIR: ${{ runner.temp }}/sqlite-branch
           TOKEN: ${{ secrets.FORK_PUSH_TOKEN }}
         run: |
           set -euo pipefail
           cd "$WORK_DIR/fork"
-          git push "https://x-access-token:${TOKEN}@github.com/erseco/facturascripts.git" \
-            "sqlite/$FS_VERSION"
-          echo "Publicada sqlite/$FS_VERSION"
+          git push --force \
+            "https://x-access-token:${TOKEN}@github.com/erseco/facturascripts.git" \
+            feature/add-sqlite-support-stable
