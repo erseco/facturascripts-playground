@@ -47,16 +47,19 @@ node --check src/shared/storage.js
 
 El bundle readonly se genera con `scripts/build-facturascripts-bundle.sh`.
 
-El workflow de Pages descubre las versiones oficiales `stable` y `beta` desde
-`facturascripts.com`, construye una matriz dinámica deduplicada y publica un
-manifiesto por versión junto a `assets/manifests/versions.json`. No se conservan
-betas sustituidas ni una ventana arbitraria de releases antiguas: los canales
-oficiales son la fuente de verdad del soporte publicado.
+El workflow de Pages resuelve dos canales: la versión `stable` desde
+`facturascripts.com` y la de desarrollo leyendo `Core/Kernel.php` de la rama de
+trabajo del fork. Publica un manifiesto por versión junto a
+`assets/manifests/versions.json`. Si ambas versiones coincidieran, el workflow
+aborta con un mensaje explícito en vez de publicar, porque los manifiestos se
+nombran por versión y colisionarían.
 
 Variables de entorno soportadas:
 
 - `FS_REF`: repositorio fuente de FacturaScripts
 - `FS_REF_BRANCH`: rama a usar
+- `FS_CHANNEL`: canal a construir, `stable` o `dev`. Si se define, elige la rama y tiene
+  prioridad sobre `FS_REF_BRANCH`. Sin definir, se usa `FS_REF_BRANCH`.
 - `WORK_DIR`: directorio temporal del build
 - `DIST_DIR`: salida del bundle
 - `MANIFEST_DIR`: salida del manifiesto

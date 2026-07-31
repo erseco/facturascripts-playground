@@ -137,7 +137,8 @@ Con `FS_CHANNEL` el build elige entre dos ramas fijas del fork:
   `scripts/build-sqlite-branch.sh`: release oficial del canal stable mas el delta SQLite
   aplicado con merge a 3 bandas. Se reescribe con force-push, no commitear a mano.
 
-El build ya no parchea nada en tiempo de construccion.
+El build ya no aplica ningun parche de SQLite en tiempo de construccion; los retoques
+`perl` que quedan son ajustes al entorno del navegador, sin relacion con SQLite.
 
 Bundle format: a single streaming `tar.zst` (`format: "tar.zst"`, `container: "tar"`,
 `codec: "zstd"` in the manifest). The build packs the staged core with
