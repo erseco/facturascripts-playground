@@ -228,28 +228,124 @@ git commit -m "Genera ramas sqlite/<version> con merge a 3 bandas"
 ### Task 2: Workflow de generacion y publicacion
 
 **Files:**
+- Create: `scripts/detect-official-versions.sh`
 - Create: `.github/workflows/sqlite-branches.yml`
+- Modify: `.github/workflows/pages.yml:42-56` (usar el script compartido)
 
 **Interfaces:**
 - Consumes: `scripts/build-sqlite-branch.sh` de la Tarea 1 (variables `FS_VERSION`, `WORK_DIR`; deja la rama en `$WORK_DIR/fork`).
-- Produces: ramas `sqlite/<version>` empujadas a `erseco/facturascripts`.
+- Produces: ramas `sqlite/<version>` empujadas a `erseco/facturascripts`, y
+  `scripts/detect-official-versions.sh <canal>`, que imprime por stdout la version publicada
+  en `stable` o `beta` (por ejemplo `2026.41`) y sale con codigo distinto de cero si no la
+  puede determinar.
+
+**Ampliacion de alcance decidida fuera del plan original:** la deteccion de versiones se
+extrae a un script compartido en vez de duplicar la funcion bash `channel_version()` en el
+workflow nuevo. Eso obliga a tocar tambien `pages.yml`, que no estaba en el plan. La
+duplicacion literal de un bloque de logica es un defecto que el revisor marcaria, y aqui se
+evita de raiz.
 
 **Decision de ubicacion:** el workflow vive en el repo del playground, no en el fork. Razones: (a) GitHub Actions solo dispara `schedule` desde la rama por defecto, asi que en el fork tendria que ir en `master`, que es justo la rama que se sincroniza con upstream y donde un fichero propio estorba con la PR #1908 abierta; (b) mantiene toda la automatizacion del playground en un sitio. El coste es necesitar un PAT.
 
-- [ ] **Step 1: Crear el secreto**
+- [ ] **Step 1: Crear el secreto (paso humano, diferido)**
 
-Crear un fine-grained PAT con permiso `Contents: read and write` sobre `erseco/facturascripts` y guardarlo en el playground como secreto `FORK_PUSH_TOKEN`:
+El workflow necesita un fine-grained PAT con permiso `Contents: read and write` sobre
+`erseco/facturascripts`, guardado en el playground como secreto `FORK_PUSH_TOKEN`:
 
 ```bash
 gh secret set FORK_PUSH_TOKEN --repo erseco/facturascripts-playground
 ```
 
-- [ ] **Step 2: Verificar que el workflow no existe**
+**Solo lo puede hacer una persona**, asi que este paso queda pendiente y no bloquea al resto
+de la tarea: el fichero del workflow se escribe igual y queda listo para cuando el secreto
+exista. Las ramas `sqlite/<version>` de hoy se publican a mano con SSH (Tarea 3, Step 0), que
+es lo que se acordo. Hasta que el secreto exista, una ejecucion programada del workflow
+fallara en el paso de publicar; es un fallo esperado y visible, no un error silencioso.
+
+- [ ] **Step 2: Escribir el detector de versiones compartido**
+
+Crear `scripts/detect-official-versions.sh`:
+
+```sh
+#!/bin/sh
+# Imprime la version de FacturaScripts publicada en un canal oficial.
+# Uso: scripts/detect-official-versions.sh stable|beta
+#
+# La version se lee de la cabecera Content-Disposition de la descarga, que
+# viene como filename="CORE-2026.41.zip". Se usa sh POSIX a proposito, para
+# que valga tanto en los workflows como en local.
+set -eu
+
+CHANNEL=${1:-}
+case "$CHANNEL" in
+  stable|beta) ;;
+  *) echo "Uso: $0 stable|beta" >&2; exit 1 ;;
+esac
+
+HEADERS=$(curl --fail --silent --show-error --location --head \
+  "https://facturascripts.com/DownloadBuild/1/$CHANNEL")
+
+VERSION=$(printf '%s\n' "$HEADERS" \
+  | sed -nE 's/.*filename="?CORE-([0-9]{4}(\.[0-9]+)?)\.zip"?.*/\1/ip' \
+  | tail -1)
+
+case "$VERSION" in
+  ''|*[!0-9.]*)
+    echo "No se pudo detectar la version del canal $CHANNEL" >&2
+    exit 1
+    ;;
+esac
+
+printf '%s' "$VERSION"
+```
+
+- [ ] **Step 3: Probar el detector contra los dos canales**
+
+Run:
+```bash
+chmod +x scripts/detect-official-versions.sh
+echo "stable=$(scripts/detect-official-versions.sh stable)"
+echo "beta=$(scripts/detect-official-versions.sh beta)"
+scripts/detect-official-versions.sh nosoyuncanal 2>&1 || echo "rechaza canal invalido (correcto)"
+```
+Expected: imprime `stable=` y `beta=` con versiones del tipo `2026.41` y `2026.5`, y la
+tercera linea imprime `rechaza canal invalido (correcto)`.
+
+- [ ] **Step 4: Sustituir la funcion duplicada en pages.yml**
+
+En `.github/workflows/pages.yml`, borrar la definicion completa de `channel_version()`
+(desde `channel_version() {` hasta su `}`, lineas 42-53) y sustituir las dos llamadas
+
+```bash
+          stable=$(channel_version stable)
+          beta=$(channel_version beta)
+```
+
+por
+
+```bash
+          stable=$(scripts/detect-official-versions.sh stable)
+          beta=$(scripts/detect-official-versions.sh beta)
+```
+
+El resto del step (`matrix`, `index`, `changed`, las salidas) no se toca.
+
+- [ ] **Step 5: Verificar que pages.yml sigue siendo valido**
+
+Run: `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/pages.yml')); print('pages.yml valido')"`
+Expected: imprime `pages.yml valido`.
+
+Comprobar ademas que no queda rastro de la funcion:
+
+Run: `grep -c "channel_version" .github/workflows/pages.yml || echo "0 coincidencias (correcto)"`
+Expected: `0 coincidencias (correcto)`.
+
+- [ ] **Step 6: Verificar que el workflow no existe**
 
 Run: `test ! -f .github/workflows/sqlite-branches.yml && echo "no existe (correcto)"`
 Expected: imprime `no existe (correcto)`
 
-- [ ] **Step 3: Escribir el workflow**
+- [ ] **Step 7: Escribir el workflow**
 
 Crear `.github/workflows/sqlite-branches.yml`:
 
@@ -272,28 +368,17 @@ jobs:
     outputs:
       matrix: ${{ steps.detect.outputs.matrix }}
     steps:
+      - uses: actions/checkout@v4
+
       - id: detect
         run: |
           set -euo pipefail
 
-          channel_version() {
-            local channel="$1" headers version
-            headers=$(curl --fail --silent --show-error --location --head \
-              "https://facturascripts.com/DownloadBuild/1/${channel}")
-            version=$(sed -nE 's/.*filename="?CORE-([0-9]{4}(\.[0-9]+)?)\.zip"?.*/\1/ip' \
-              <<< "$headers" | tail -1)
-            [[ "$version" =~ ^[0-9]{4}(\.[0-9]+)?$ ]] || {
-              echo "No se pudo detectar la version ${channel}" >&2
-              exit 1
-            }
-            printf '%s' "$version"
-          }
-
           if [[ -n "${{ inputs.version }}" ]]; then
             matrix=$(jq -nc --arg v "${{ inputs.version }}" '{version: [$v]}')
           else
-            stable=$(channel_version stable)
-            beta=$(channel_version beta)
+            stable=$(scripts/detect-official-versions.sh stable)
+            beta=$(scripts/detect-official-versions.sh beta)
             if [[ "$stable" == "$beta" ]]; then
               matrix=$(jq -nc --arg s "$stable" '{version: [$s]}')
             else
@@ -386,34 +471,28 @@ jobs:
 
 Nota sobre el `if` de "ya existe": la generacion es idempotente por version. Una release publicada no cambia, asi que regenerarla cada noche seria trabajo tirado. Cuando cambies el delta SQLite y quieras rehacer una rama, borrala (`git push --delete`) y el workflow la recrea, o usa `workflow_dispatch` con la version.
 
-- [ ] **Step 4: Validar la sintaxis del workflow**
+- [ ] **Step 8: Validar la sintaxis del workflow**
 
 Run: `npx --yes yaml-lint .github/workflows/sqlite-branches.yml || python3 -c "import yaml,sys; yaml.safe_load(open('.github/workflows/sqlite-branches.yml')); print('YAML valido')"`
 Expected: imprime `YAML valido` (o el lint pasa sin errores).
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
-git add .github/workflows/sqlite-branches.yml
+git add scripts/detect-official-versions.sh .github/workflows/sqlite-branches.yml .github/workflows/pages.yml
 git commit -m "Anade workflow que genera las ramas sqlite por version"
 ```
 
-- [ ] **Step 6: Ejecutarlo a mano una vez, para stable y beta**
+- [ ] **Step 10: Dejar constancia de que la ejecucion real queda pendiente del secreto**
 
-Se lanza sin el input `version` para que genere las dos versiones vigentes: la Tarea 3 y la
-verificacion final necesitan que existan tanto `sqlite/2026.41` como `sqlite/2026.5`.
+El workflow no se puede ejecutar de extremo a extremo hasta que exista `FORK_PUSH_TOKEN`
+(Step 1). Lo que si se comprueba ahora es que la deteccion de versiones que usa funciona,
+porque es el unico paso que no depende del secreto:
 
-Run: `gh workflow run "SQLite branches" --repo erseco/facturascripts-playground`
-Luego: `gh run watch --repo erseco/facturascripts-playground`
-Expected: los dos jobs de la matriz terminan en verde, cada uno con la linea
-`Smoke test correcto: el bundle lleva el soporte SQLite.`
+Run: `scripts/detect-official-versions.sh stable && echo && scripts/detect-official-versions.sh beta`
+Expected: dos versiones del tipo `2026.41` y `2026.5`.
 
-Comprobar el resultado:
-
-```bash
-git ls-remote --heads https://github.com/erseco/facturascripts.git 'sqlite/*'
-```
-Expected: lista `sqlite/2026.41` y `sqlite/2026.5`.
+Las ramas de hoy se publican a mano en la Tarea 3, Step 0.
 
 ---
 
@@ -427,6 +506,31 @@ Expected: lista `sqlite/2026.41` y `sqlite/2026.5`.
 **Interfaces:**
 - Consumes: ramas `sqlite/<version>` publicadas en la Tarea 2.
 - Produces: `fetch-facturascripts-source.sh` sigue imprimiendo por stdout el directorio del core, ahora siempre un clon de git.
+
+- [ ] **Step 0: Generar y publicar las dos ramas de version**
+
+La Tarea 1 ya dejo `sqlite/2026.41` en el clon local. Falta la beta, y falta publicar ambas:
+el resto de esta tarea las necesita en el remoto para poder verificar de verdad.
+
+```bash
+FS_VERSION=2026.5 sh scripts/build-sqlite-branch.sh
+cd .cache/sqlite-branch/fork
+git push git@github.com:erseco/facturascripts.git sqlite/2026.41 sqlite/2026.5
+cd -
+```
+
+Expected: la generacion de 2026.5 termina sin conflictos y con los `php -l` limpios, igual
+que la de 2026.41, y el push crea las dos ramas.
+
+Comprobar:
+
+```bash
+git ls-remote --heads git@github.com:erseco/facturascripts.git 'sqlite/*'
+```
+Expected: lista `sqlite/2026.41` y `sqlite/2026.5`.
+
+Si la generacion de 2026.5 conflictua, PARA y reporta: significa que el delta no es tan
+estable entre canales como asume el diseno, y eso es informacion que cambia el plan.
 
 - [ ] **Step 1: Comprobar el estado de partida**
 
