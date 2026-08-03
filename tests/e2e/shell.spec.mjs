@@ -129,8 +129,8 @@ test("info panel hosts the version config with a dirty-state apply", async ({
           },
           {
             version: "2099.2",
-            channels: ["beta"],
-            label: "2099.2 (Beta)",
+            channels: ["dev"],
+            label: "2099.2 (Dev)",
           },
         ],
       }),

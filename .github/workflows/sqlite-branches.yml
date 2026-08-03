@@ -1,0 +1,79 @@
+name: SQLite branches
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          tools: composer
+
+      - uses: actions/setup-node@v7
+        with:
+          # build-tar-zst-bundle.mjs necesita el zstd nativo de node:zlib.
+          node-version: 24
+          cache: npm
+
+      - name: Generar la rama stable
+        id: gen
+        env:
+          WORK_DIR: ${{ runner.temp }}/sqlite-branch
+        run: |
+          set -euo pipefail
+          RESULT=$(sh scripts/build-sqlite-branch.sh)
+          echo "resultado=$RESULT" >> "$GITHUB_OUTPUT"
+          if [ "$RESULT" = "SIN-CAMBIOS" ]; then
+            echo "La rama ya estaba al dia; no hay nada que publicar."
+          fi
+
+      - name: Smoke test - construir el bundle desde la rama
+        if: steps.gen.outputs.resultado != 'SIN-CAMBIOS'
+        env:
+          WORK_DIR: ${{ runner.temp }}/sqlite-branch
+          MANIFEST_FILE: smoke-stable.json
+          UPDATE_CONFIG: "false"
+        run: |
+          set -euo pipefail
+          npm install
+          # Se construye con FS_CHANNEL=stable, la misma variable que usa el
+          # deploy publico, para ejercitar de verdad la resolucion del canal.
+          # FS_REF apunta al clon local (que ya tiene la rama generada) en vez
+          # de al fork remoto porque "Publicar la rama" todavia no se ha
+          # ejecutado en este punto del job.
+          FS_REF="$WORK_DIR/fork" \
+          FS_CHANNEL="stable" \
+            npm run bundle
+          test -f "assets/manifests/smoke-stable.json"
+          # El listado se materializa en un fichero en vez de encadenar
+          # `tar | grep -q`: grep sale en el primer match, tar recibe SIGPIPE y
+          # sale 141, y `pipefail` + `set -e` abortarian el step con el bundle
+          # correcto.
+          tar --use-compress-program=unzstd -tf \
+            assets/facturascripts/facturascripts-core-*.tar.zst > bundle-list.txt
+          grep -q 'Core/Base/DataBase/SqliteEngine.php' bundle-list.txt
+          grep -q 'Core/Base/DataBase/SqliteQueries.php' bundle-list.txt
+          echo "Smoke test correcto: el bundle lleva el soporte SQLite."
+
+      - name: Publicar la rama
+        if: steps.gen.outputs.resultado != 'SIN-CAMBIOS'
+        env:
+          WORK_DIR: ${{ runner.temp }}/sqlite-branch
+          TOKEN: ${{ secrets.FORK_PUSH_TOKEN }}
+        run: |
+          set -euo pipefail
+          # `set -u` no salta con un secreto ausente (la variable existe, vacia),
+          # asi que el push moriria con un error de autenticacion opaco al final
+          # de un job que ya ha hecho todo el trabajo.
+          : "${TOKEN:?Falta el secreto FORK_PUSH_TOKEN en el repositorio}"
+          cd "$WORK_DIR/fork"
+          git push --force \
+            "https://x-access-token:${TOKEN}@github.com/erseco/facturascripts.git" \
+            feature/add-sqlite-support-stable

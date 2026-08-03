@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import { normalizeCoreVersions } from "../src/shared/core-versions.js";
 
 describe("supported core versions", () => {
-  it("keeps valid stable and beta entries and selects the requested default", () => {
+  it("keeps valid stable and dev entries and selects the requested default", () => {
     assert.deepEqual(
       normalizeCoreVersions({
         default: "2026.41",
@@ -15,8 +15,8 @@ describe("supported core versions", () => {
           },
           {
             version: "2026.5",
-            channels: ["beta"],
-            label: "2026.5 (Beta)",
+            channels: ["dev"],
+            label: "2026.5 (Dev)",
           },
         ],
       }),
@@ -30,8 +30,8 @@ describe("supported core versions", () => {
           },
           {
             version: "2026.5",
-            channels: ["beta"],
-            label: "2026.5 (Beta)",
+            channels: ["dev"],
+            label: "2026.5 (Dev)",
           },
         ],
       },
@@ -42,14 +42,14 @@ describe("supported core versions", () => {
     const result = normalizeCoreVersions({
       default: "missing",
       versions: [
-        { version: "2026.5", channels: ["beta", "nightly", "beta"] },
+        { version: "2026.5", channels: ["dev", "nightly", "dev"] },
         { version: "2026.5", channels: ["stable"] },
         { version: "../bad", channels: ["stable"] },
       ],
     });
 
     assert.equal(result.defaultVersion, "2026.5");
-    assert.deepEqual(result.versions[0].channels, ["beta"]);
+    assert.deepEqual(result.versions[0].channels, ["dev"]);
     assert.equal(result.versions.length, 1);
   });
 });

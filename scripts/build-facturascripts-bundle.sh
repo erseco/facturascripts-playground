@@ -16,50 +16,6 @@ mkdir -p "$FS_STAGE" "$DIST_DIR" "$MANIFEST_DIR"
 cp -R "$SOURCE_DIR"/. "$FS_STAGE"
 rm -rf "$FS_STAGE/.git" "$FS_STAGE/.github" "$FS_STAGE/tests" "$FS_STAGE/Test"
 
-# Official builds do not include the pending SQLite support required by the
-# browser runtime. Apply the immutable runtime portion of the fork's SQLite
-# commit. ModelClass is intentionally excluded: supported releases already
-# contain their own length validation and that hunk differs between channels.
-if [ -n "${FS_VERSION:-}" ]; then
-  SQLITE_COMMIT="14f07e6f2d7ebdace161e5383122011a73d6378c"
-  curl --fail --location --silent --show-error \
-    "https://github.com/erseco/facturascripts/commit/$SQLITE_COMMIT.diff" \
-    --output "$WORK_DIR/sqlite-support.diff"
-  awk '
-    /^diff --git / {
-      keep = ($3 == "a/Core/Base/DataBase.php" ||
-        $3 == "a/Core/Controller/Installer.php" ||
-        $3 == "a/Core/Lib/Import/CSVImport.php" ||
-        $3 == "a/Core/Model/AttachedFile.php" ||
-        $3 == "a/Core/View/Installer/Install.html.twig")
-    }
-    keep { print }
-  ' "$WORK_DIR/sqlite-support.diff" > "$WORK_DIR/sqlite-runtime.diff"
-  (
-    cd "$FS_STAGE"
-    patch -p1 -f -i "$WORK_DIR/sqlite-runtime.diff"
-    rm -f \
-      Core/Base/DataBase.php.orig \
-      Core/Controller/Installer.php.orig \
-      Core/Lib/Import/CSVImport.php.orig \
-      Core/Model/AttachedFile.php.orig \
-      Core/View/Installer/Install.html.twig.orig
-
-    # The filtered patch only contains modifications to existing runtime files.
-    # Materialize its two additions explicitly from the same immutable commit.
-    curl --fail --location --silent --show-error \
-      "https://raw.githubusercontent.com/erseco/facturascripts/$SQLITE_COMMIT/Core/Base/DataBase/SqliteEngine.php" \
-      --output Core/Base/DataBase/SqliteEngine.php
-    curl --fail --location --silent --show-error \
-      "https://raw.githubusercontent.com/erseco/facturascripts/$SQLITE_COMMIT/Core/Base/DataBase/SqliteQueries.php" \
-      --output Core/Base/DataBase/SqliteQueries.php
-    grep -Fq 'use FacturaScripts\Core\Base\DataBase\SqliteEngine;' Core/Base/DataBase.php
-    grep -Fq "case 'sqlite':" Core/Base/DataBase.php
-    php -l Core/Base/DataBase/SqliteEngine.php >&2
-    php -l Core/Base/DataBase/SqliteQueries.php >&2
-  )
-fi
-
 perl -0pi -e "s/'curl',//g" "$FS_STAGE/Core/Controller/Installer.php"
 perl -0pi -e "s/'fileinfo',//g" "$FS_STAGE/Core/Controller/Installer.php"
 perl -0pi -e "s/'bcmath',//g" "$FS_STAGE/Core/Controller/Installer.php"
@@ -127,11 +83,10 @@ fi
 if [ -d "$SOURCE_DIR/.git" ]; then
   SOURCE_COMMIT=$(git -C "$SOURCE_DIR" rev-parse HEAD)
   SOURCE_REPOSITORY=${FS_REF:-https://github.com/erseco/facturascripts.git}
-  SOURCE_BRANCH=${FS_REF_BRANCH:-feature/add-sqlite-support}
+  SOURCE_BRANCH=$(git -C "$SOURCE_DIR" rev-parse --abbrev-ref HEAD)
 else
-  SOURCE_COMMIT="official-$FS_VERSION"
-  SOURCE_REPOSITORY="https://facturascripts.com/DownloadBuild/1/$FS_VERSION"
-  SOURCE_BRANCH=$FS_VERSION
+  echo "Se esperaba un clon de git en $SOURCE_DIR" >&2
+  exit 1
 fi
 RELEASE=$(php -r 'preg_match("/function version\(\).*?return\s+([\d.]+)/s", file_get_contents("'"$FS_STAGE"'/Core/Kernel.php"), $m); echo $m[1] ?? "unknown";')
 SAFE_RELEASE=$(printf '%s' "$RELEASE" | sed 's/[^A-Za-z0-9._-]/_/g')

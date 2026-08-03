@@ -47,16 +47,19 @@ node --check src/shared/storage.js
 
 El bundle readonly se genera con `scripts/build-facturascripts-bundle.sh`.
 
-El workflow de Pages descubre las versiones oficiales `stable` y `beta` desde
-`facturascripts.com`, construye una matriz dinámica deduplicada y publica un
-manifiesto por versión junto a `assets/manifests/versions.json`. No se conservan
-betas sustituidas ni una ventana arbitraria de releases antiguas: los canales
-oficiales son la fuente de verdad del soporte publicado.
+El workflow de Pages resuelve dos canales: la versión `stable` desde
+`facturascripts.com` y la de desarrollo leyendo `Core/Kernel.php` de la rama de
+trabajo del fork. Publica un manifiesto por versión junto a
+`assets/manifests/versions.json`. Si ambas versiones coincidieran, el workflow
+aborta con un mensaje explícito en vez de publicar, porque los manifiestos se
+nombran por versión y colisionarían.
 
 Variables de entorno soportadas:
 
 - `FS_REF`: repositorio fuente de FacturaScripts
 - `FS_REF_BRANCH`: rama a usar
+- `FS_CHANNEL`: canal a construir, `stable` o `dev`. Si se define, elige la rama y tiene
+  prioridad sobre `FS_REF_BRANCH`. Sin definir, se usa `FS_REF_BRANCH`.
 - `WORK_DIR`: directorio temporal del build
 - `DIST_DIR`: salida del bundle
 - `MANIFEST_DIR`: salida del manifiesto
@@ -116,3 +119,45 @@ Actualiza la documentacion en la misma PR si tocas:
 - el modelo de almacenamiento o manifiesto
 - el proceso de build del bundle
 - la navegacion de la shell o el routing del service worker
+
+## Canales SQLite
+
+El soporte SQLite todavia no esta en FacturaScripts upstream (PR
+[#1908](https://github.com/NeoRazorX/facturascripts/pull/1908), abierta desde marzo de 2026
+sin respuesta), asi que el playground construye desde dos ramas del fork
+`erseco/facturascripts`:
+
+| Canal | Rama | Como se mantiene |
+| --- | --- | --- |
+| `dev` | `feature/add-sqlite-support` | A mano. Es la rama de la PR. |
+| `stable` | `feature/add-sqlite-support-stable` | Generada, se reescribe con force-push. |
+
+La rama stable se genera con:
+
+    make sqlite-branch
+
+Es la release oficial del canal stable importada como commit, mas el delta SQLite aplicado
+con `git cherry-pick`. El merge a 3 bandas es deliberado: `patch` falla ante la deriva de
+contexto entre master y una release antigua, y `patch --fuzz` es peor, porque no falla sino
+que acierta mal y deja el build en verde con el codigo descolocado.
+
+El delta es `origin/master...feature/add-sqlite-support` restringido a `Core/`, menos una
+denylist declarada en el script. La denylist existe para dejar fuera lo que no es "habilitar
+SQLite" sino arreglos a codigo de master que la release todavia no incluye: esos conflictuan
+siempre, porque parchean codigo que no esta.
+
+El commit generado lleva tres trailers -- `Release:`, `Delta-Id:` y `Generator-Id:` -- y la
+rama solo se regenera si alguno cambia. `Generator-Id` es el hash del propio script: sin el,
+un cambio en la logica de generacion no llegaria nunca a desplegarse.
+
+El workflow `.github/workflows/sqlite-branches.yml` publica la rama generada con el secreto
+`FORK_PUSH_TOKEN`, que necesita permiso de escritura de contenidos sobre
+`erseco/facturascripts`. Sin ese secreto la generacion automatica no puede publicar y el
+workflow aborta antes del push.
+
+Si el merge conflictua, el workflow falla y hay que resolverlo a mano.
+
+**Limitacion conocida:** los manifests se nombran por version, asi que si la version del
+canal stable llegara a coincidir con la de la rama dev, ambos colisionarian. El workflow lo
+detecta y aborta con un mensaje explicito. El arreglo de fondo es indexar los manifests por
+canal, pendiente.
