@@ -87,6 +87,9 @@ let currentPath = "/";
 // and service-worker scopes), so the shell tracks visited paths itself.
 const backStack = [];
 let suppressBackPush = false;
+// Armed whenever a fresh runtime boot points the frame at its entry URL: the
+// first iframe load that follows is the landing redirect, not a user navigation.
+let pendingBootFrameLoad = true;
 let channel;
 let serviceWorkerReady = null;
 let activeBlueprint;
@@ -214,6 +217,7 @@ async function updateFrame() {
     url.searchParams.set("reload", String(remoteReloadToken));
   }
   remoteFrameBooted = false;
+  pendingBootFrameLoad = true;
   els.frame.src = url.toString();
   pendingCleanBoot = false;
 }
@@ -428,10 +432,25 @@ function bindShellChannel() {
         setUiLocked(true);
         appendLog(`${message.title}: ${message.detail}`);
         break;
-      case "ready":
+      case "ready": {
+        // In-site navigations announce "ready" before "navigate", so the
+        // back-stack transition must be recorded here — by the time the
+        // "navigate" message arrives currentPath has already moved on.
+        // php-worker's own bootstrap signal (bootstrapped: true) is not an
+        // iframe load, and the first iframe load of a boot is the landing
+        // redirect, so neither counts as a user navigation.
+        const isFrameLoad = !message.bootstrapped;
         remoteFrameBooted = true;
         setUiLocked(false);
-        currentPath = message.path || currentPath;
+        const nextPath = message.path || currentPath;
+        if (isFrameLoad) {
+          if (pendingBootFrameLoad) {
+            pendingBootFrameLoad = false;
+          } else {
+            recordBackEntry(currentPath, nextPath);
+          }
+        }
+        currentPath = nextPath;
         els.address.value = currentPath;
         saveState({ lastReadyAt: new Date().toISOString() });
         // After bootstrap completes (autologin cookies set), re-navigate so the
@@ -440,6 +459,7 @@ function bindShellChannel() {
           postToRemote({ kind: "navigate-site", path: currentPath });
         }
         break;
+      }
       case "navigate": {
         const nextPath = message.path || "/";
         recordBackEntry(currentPath, nextPath);
