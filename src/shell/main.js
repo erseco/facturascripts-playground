@@ -46,6 +46,9 @@ const els = {
   phpInfoPanel: document.querySelector("#phpinfo-panel"),
   phpInfoTab: document.querySelector("#phpinfo-tab"),
   refreshPhpInfoButton: document.querySelector("#refresh-phpinfo-button"),
+  home: document.querySelector("#home-button"),
+  back: document.querySelector("#back-button"),
+  panelClose: document.querySelector("#panel-close-button"),
   refresh: document.querySelector("#refresh-button"),
   reset: document.querySelector("#reset-button"),
   infoPhpVersion: document.querySelector("#info-php-version"),
@@ -79,6 +82,14 @@ let currentRuntimeId;
 let currentCoreVersion = "";
 let supportedCoreVersions = { defaultVersion: "", versions: [] };
 let currentPath = "/";
+// In-shell navigation history for the toolbar Back button. The iframe's own
+// session history is not usable here (navigations happen across nested frames
+// and service-worker scopes), so the shell tracks visited paths itself.
+const backStack = [];
+let suppressBackPush = false;
+// Armed whenever a fresh runtime boot points the frame at its entry URL: the
+// first iframe load that follows is the landing redirect, not a user navigation.
+let pendingBootFrameLoad = true;
 let channel;
 let serviceWorkerReady = null;
 let activeBlueprint;
@@ -133,6 +144,24 @@ function setUiLocked(locked) {
   els.importInput.disabled = locked;
   els.addressForm.classList.toggle("is-disabled", locked);
   blueprintEditor.setLocked(locked);
+  updateBackButton();
+}
+
+function updateBackButton() {
+  if (els.back) {
+    els.back.disabled = uiLocked || backStack.length === 0;
+  }
+}
+
+function recordBackEntry(previousPath, nextPath) {
+  const suppressed = suppressBackPush;
+  suppressBackPush = false;
+  if (!suppressed && previousPath && previousPath !== nextPath) {
+    if (backStack[backStack.length - 1] !== previousPath) {
+      backStack.push(previousPath);
+    }
+  }
+  updateBackButton();
 }
 
 async function ensureRuntimeServiceWorker() {
@@ -188,6 +217,7 @@ async function updateFrame() {
     url.searchParams.set("reload", String(remoteReloadToken));
   }
   remoteFrameBooted = false;
+  pendingBootFrameLoad = true;
   els.frame.src = url.toString();
   pendingCleanBoot = false;
 }
@@ -206,7 +236,9 @@ function navigateWithinRuntime(path) {
     return;
   }
 
+  const previousPath = currentPath;
   currentPath = path || "/";
+  recordBackEntry(previousPath, currentPath);
   els.address.value = currentPath;
   saveState();
 
@@ -400,10 +432,25 @@ function bindShellChannel() {
         setUiLocked(true);
         appendLog(`${message.title}: ${message.detail}`);
         break;
-      case "ready":
+      case "ready": {
+        // In-site navigations announce "ready" before "navigate", so the
+        // back-stack transition must be recorded here — by the time the
+        // "navigate" message arrives currentPath has already moved on.
+        // php-worker's own bootstrap signal (bootstrapped: true) is not an
+        // iframe load, and the first iframe load of a boot is the landing
+        // redirect, so neither counts as a user navigation.
+        const isFrameLoad = !message.bootstrapped;
         remoteFrameBooted = true;
         setUiLocked(false);
-        currentPath = message.path || currentPath;
+        const nextPath = message.path || currentPath;
+        if (isFrameLoad) {
+          if (pendingBootFrameLoad) {
+            pendingBootFrameLoad = false;
+          } else {
+            recordBackEntry(currentPath, nextPath);
+          }
+        }
+        currentPath = nextPath;
         els.address.value = currentPath;
         saveState({ lastReadyAt: new Date().toISOString() });
         // After bootstrap completes (autologin cookies set), re-navigate so the
@@ -412,11 +459,15 @@ function bindShellChannel() {
           postToRemote({ kind: "navigate-site", path: currentPath });
         }
         break;
-      case "navigate":
-        currentPath = message.path || "/";
+      }
+      case "navigate": {
+        const nextPath = message.path || "/";
+        recordBackEntry(currentPath, nextPath);
+        currentPath = nextPath;
         els.address.value = currentPath;
         saveState();
         break;
+      }
       case "wasm-network-error":
         appendLog(message.detail, true);
         showWasmNetworkWarning(message.path);
@@ -632,11 +683,30 @@ async function main() {
   await updateFrame();
 }
 
+els.home.addEventListener("click", () => {
+  navigateWithinRuntime("/");
+});
+
+els.back.addEventListener("click", () => {
+  if (uiLocked || backStack.length === 0) {
+    return;
+  }
+  const previousPath = backStack.pop();
+  updateBackButton();
+  suppressBackPush = true;
+  navigateWithinRuntime(previousPath);
+});
+
 els.refresh.addEventListener("click", () => {
   navigateWithinRuntime(currentPath);
 });
 
 els.panelToggle.addEventListener("click", toggleSidePanel);
+els.panelClose.addEventListener("click", () => {
+  if (!els.sidePanel.classList.contains("is-collapsed")) {
+    toggleSidePanel();
+  }
+});
 els.infoTab.addEventListener("click", () => setActivePanel("info"));
 els.logsTab.addEventListener("click", () => setActivePanel("logs"));
 els.phpInfoTab.addEventListener("click", () => {
@@ -650,10 +720,11 @@ els.clearLogs.addEventListener("click", () => {
 els.copyLogs.addEventListener("click", () => {
   const text = els.logPanel.textContent || "";
   navigator.clipboard.writeText(text).then(() => {
-    const original = els.copyLogs.textContent;
-    els.copyLogs.textContent = "Copied!";
+    // Icon-only button: swap the SVG for a checkmark, then restore it.
+    const original = els.copyLogs.innerHTML;
+    els.copyLogs.textContent = "✓";
     setTimeout(() => {
-      els.copyLogs.textContent = original;
+      els.copyLogs.innerHTML = original;
     }, 1200);
   });
 });
@@ -703,6 +774,8 @@ els.reset.addEventListener("click", () => {
     updateBlueprintTextarea();
   }
   currentPath = activeBlueprint?.landingPage || config.landingPath || "/";
+  backStack.length = 0;
+  updateBackButton();
   els.address.value = currentPath;
   pendingCleanBoot = true;
   remoteFrameBooted = false;

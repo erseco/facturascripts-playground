@@ -155,10 +155,20 @@ export function createBlueprintValidationResult(rawText, deps) {
     };
   }
 
+  // FacturaScripts blueprints are declarative (no step list), so the headline
+  // count that actually varies between blueprints is the plugin list.
+  const pluginCount = Array.isArray(blueprint?.plugins)
+    ? blueprint.plugins.length
+    : 0;
+  const detail =
+    pluginCount > 0
+      ? ` · ${pluginCount} ${pluginCount === 1 ? "plugin" : "plugins"}`
+      : "";
+
   return {
     valid: true,
     stage: "valid",
-    message: "Blueprint is valid.",
+    message: `✓ Valid blueprint${detail}`,
     blueprint,
   };
 }
