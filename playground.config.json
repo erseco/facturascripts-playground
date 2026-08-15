@@ -12,6 +12,9 @@
       "facturascripts.com"
     ]
   },
+  "sentry": {
+    "dsn": "https://fd640415aeecc627bca53f0a0f7303b1@o4510456164712448.ingest.de.sentry.io/4511915928453200"
+  },
   "siteTitle": "FacturaScripts Playground",
   "landingPath": "/",
   "locale": "es_ES",
