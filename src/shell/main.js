@@ -10,6 +10,11 @@ import {
 import { getDefaultRuntime, loadPlaygroundConfig } from "../shared/config.js";
 import { loadCoreVersions } from "../shared/core-versions.js";
 import {
+  captureException,
+  captureMessage,
+  initMonitoring,
+} from "../shared/monitoring.js";
+import {
   blueprintSourceKey,
   hasBlueprintUrlOverride,
   resolveRemoteUrl,
@@ -476,6 +481,7 @@ function bindShellChannel() {
         remoteFrameBooted = false;
         setUiLocked(false);
         appendLog(message.detail, true);
+        captureMessage(message.detail, "error", { source: "runtime" });
         if (!latestPhpInfoHtml) {
           capturePhpInfoViaWorker("bootstrap-error");
         }
@@ -641,6 +647,15 @@ async function main() {
   currentRuntimeId = shouldForceCleanBoot
     ? defaultRuntime.id
     : previous?.runtimeId || defaultRuntime.id;
+
+  // Error monitoring (Sentry) — a no-op unless config.sentry.dsn is set.
+  initMonitoring({
+    dsn: config.sentry?.dsn,
+    environment: config.sentry?.environment,
+    release: BUILD_VERSION,
+    tags: { runtime: currentRuntimeId, coreVersion: currentCoreVersion },
+  });
+
   currentPath = shouldForceCleanBoot
     ? preferredPath
     : shouldBypassSavedLogin
@@ -787,4 +802,5 @@ els.reset.addEventListener("click", () => {
 main().catch((error) => {
   setUiLocked(false);
   appendLog(String(error?.stack || error?.message || error), true);
+  captureException(error, { source: "shell-main" });
 });
