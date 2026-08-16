@@ -43,6 +43,68 @@ node --check src/shared/paths.js
 node --check src/shared/storage.js
 ```
 
+## El Build ID
+
+Cada build se sella con un **Build ID** que identifica un artefacto desplegado
+concreto:
+
+```text
+20260816T065012Z-9e39f37d
+└─ hora UTC del build ─┘ └ commit ┘
+```
+
+Deliberadamente **no** es una versión semántica: el playground publica en
+*rolling release*. Como la marca de tiempo es la del *build* (no la del commit),
+reconstruir un commit sin cambios genera un ID nuevo. Esto importa especialmente
+aquí: `pages.yml` se ejecuta cada noche (`cron: "23 4 * * *"`) y vuelve a
+desplegar el mismo commit cuando upstream publica un core nuevo.
+
+```text
+20260816T065012Z-9e39f37d   # reconstruccion nocturna
+20260817T042301Z-9e39f37d   # mismo codigo, artefacto distinto
+```
+
+Un build local anade `-dirty` si el arbol de trabajo tiene cambios sin commitear.
+Los builds de CI nunca son *dirty*.
+
+Generarlo en local — `make prepare` y `make test` ya lo hacen por ti:
+
+```bash
+npm run build:version                                 # escribe los ficheros de metadatos
+node scripts/write-build-version.mjs --print-version  # imprime solo el ID
+BUILD_VERSION=20260816T065012Z-9e39f37d npm run build:version   # fija un ID exacto
+```
+
+Donde consultarlo:
+
+| Donde | Que obtienes |
+|-------|--------------|
+| Panel Info → **Runtime → Playground build** | El build en ejecucion; clic para copiar. |
+| Log de runtime | Una linea `Playground build …` al arrancar. |
+| `assets/build-version.json` | `buildVersion`, `generatedAt`, `gitSha`, `dirty`. |
+| `src/generated/build-version.js` | `BUILD_VERSION` para el codigo de la app. |
+| Sentry | El `release` del issue. |
+
+Ambos ficheros generados estan en `.gitignore`: ningun identificador se mantiene a
+mano. Esto sustituye al esquema anterior, en el que `scripts/esbuild.worker.mjs`
+escribia un hash de contenido del worker bundle en un `src/generated/build-version.js`
+**versionado en git** — ese valor no distinguia dos builds del mismo codigo y
+ensuciaba el historial.
+
+El workflow `Deploy Pages` calcula el ID una sola vez y lo exporta por
+`$GITHUB_ENV`, de modo que todos los pasos posteriores reutilizan ese valor exacto y
+el artefacto de GitHub Pages y el despliegue en Cloudflare Pages del mismo `_site`
+reportan el mismo build.
+
+El Build ID es ademas la version de cache: da nombre a la cache `fs-dist-…` del
+Service Worker (al activarse elimina las generaciones anteriores), al registro
+`sw.js?v=…` y a la URL versionada del worker. **No** versiona los datos persistentes
+del usuario: desplegar invalida la cache de codigo sin borrar el sitio de quien
+visita.
+
+El Build ID identifica al Playground, nunca a la version de FacturaScripts que se
+ejecuta dentro — se muestran por separado.
+
 ## Bundles y fuente de FacturaScripts
 
 El bundle readonly se genera con `scripts/build-facturascripts-bundle.sh`.

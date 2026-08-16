@@ -2,7 +2,7 @@ PORT ?= 8085
 FS_REF ?= https://github.com/erseco/facturascripts.git
 FS_REF_BRANCH ?= feature/add-sqlite-support
 
-.PHONY: help up deps prepare bundle serve test test-e2e lint format clean reset sqlite-branch
+.PHONY: help up deps build-version prepare bundle serve test test-e2e lint format clean reset sqlite-branch
 
 help:
 	@printf '%s\n' 'FacturaScripts Playground Make targets:' '' '  make deps      Install npm dependencies' '  make prepare   Sync browser deps and prepare runtime assets' '  make bundle    Build the readonly FacturaScripts bundle' '  make serve     Start the local dev server' '  make up        Run bundle + serve' '  make test      Run unit tests' '  make test-e2e  Run Playwright browser tests' '  make lint      Run Biome linter' '  make format    Auto-fix lint and formatting issues' '  make clean     Remove generated caches and bundle artifacts' '  make reset     Alias of clean plus cache reset' '' 'Common overrides:' '  PORT=9090 make serve' '  FS_REF=<repo> FS_REF_BRANCH=<branch> make bundle'
@@ -10,7 +10,12 @@ help:
 deps:
 	npm install
 
-prepare: deps
+# Build metadata (the deployment Build ID) is generated, never committed.
+# CI exports BUILD_VERSION so every invocation in one pipeline run reuses it.
+build-version:
+	npm run build:version
+
+prepare: deps build-version
 	npm run sync-browser-deps
 	npm run build-worker
 	npm run prepare-runtime
@@ -21,7 +26,9 @@ bundle: prepare
 sqlite-branch:
 	FS_REF=$(FS_REF) FS_REF_BRANCH=$(FS_REF_BRANCH) sh scripts/build-sqlite-branch.sh
 
-test:
+# src/generated/build-version.js is generated and git-ignored; several tests
+# (and the modules they import) expect it to exist.
+test: build-version
 	node --test tests/*.test.mjs
 
 test-e2e:
