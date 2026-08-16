@@ -179,8 +179,26 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      # Compute the deployment Build ID once and export it, so every later step
+      # reuses this exact value. This job assembles the single _site that is both
+      # uploaded as the Pages artifact and deployed to Cloudflare, so both
+      # targets report the same Build ID. The nightly schedule rebuilds the same
+      # commit whenever upstream ships a new core, and the build timestamp gives
+      # each of those deployments its own ID.
+      # See docs/development.md ("The Build ID").
+      - name: Compute Build ID
+        env:
+          # actions/checkout resolves a throwaway merge commit on pull_request;
+          # record the PR head commit so the Build ID stays traceable to source.
+          BUILD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          build_version="$(node scripts/write-build-version.mjs --print-version)"
+          echo "BUILD_VERSION=$build_version" >> "$GITHUB_ENV"
+          echo "Build ID: $build_version" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Prepare runtime assets
         run: |
+          npm run build:version
           npm run sync-browser-deps
           npm run build-worker
           npm run prepare-runtime
