@@ -21,6 +21,12 @@ import {
 } from "../shared/paths.js";
 import { createShellChannel } from "../shared/protocol.js";
 import {
+  createServiceWorkerUnsupportedError,
+  isServiceWorkerSupported,
+  isServiceWorkerUnsupportedError,
+  SERVICE_WORKER_UNSUPPORTED_MESSAGE,
+} from "../shared/service-worker-support.js";
+import {
   clearScopeSession,
   getOrCreateScopeId,
   loadSessionState,
@@ -141,6 +147,46 @@ function showWasmNetworkWarning(pagePath) {
   document.body.prepend(banner);
 }
 
+// Fatal, non-dismissible banner. The log panel is collapsed by default, so a
+// boot failure that only logged there left the user staring at an empty iframe.
+function showFatalBanner(message) {
+  const existing = document.getElementById("fatal-error-banner");
+  if (existing) existing.remove();
+
+  const banner = document.createElement("div");
+  banner.id = "fatal-error-banner";
+  banner.className = "wasm-warning-banner wasm-warning-banner--error";
+  banner.setAttribute("role", "alert");
+
+  const text = document.createElement("span");
+  text.className = "wasm-warning-banner__text";
+  text.textContent = message;
+
+  banner.append(text);
+  document.body.prepend(banner);
+}
+
+// A missing or rejected Service Worker registration is fatal: nothing serves
+// the playground without it. An unsupported browser context is an environment
+// limitation (reported as a warning so it groups apart from real regressions);
+// a rejected register() is a genuine failure.
+function reportServiceWorkerFailure(error) {
+  const unsupported = isServiceWorkerUnsupportedError(error);
+  const detail = unsupported
+    ? SERVICE_WORKER_UNSUPPORTED_MESSAGE
+    : `The playground could not start: registering its Service Worker failed (${error?.message || error}).`;
+
+  setUiLocked(false);
+  appendLog(detail, true);
+  showFatalBanner(detail);
+
+  if (unsupported) {
+    captureMessage(detail, "warning", { source: "service-worker-unsupported" });
+  } else {
+    captureException(error, { source: "service-worker-registration" });
+  }
+}
+
 function setUiLocked(locked) {
   uiLocked = locked;
   els.address.disabled = locked;
@@ -176,6 +222,12 @@ async function ensureRuntimeServiceWorker() {
     return;
   }
 
+  // Probe before touching the API: `navigator.serviceWorker` is undefined in
+  // iOS Safari private browsing and in non-secure contexts.
+  if (!isServiceWorkerSupported()) {
+    throw createServiceWorkerUnsupportedError();
+  }
+
   const swUrl = new URL("../../sw.js", import.meta.url);
   // Cache-bust the SW by the per-build worker-bundle hash so a redeploy is
   // always picked up (the old static config.bundleVersion was manual).
@@ -190,9 +242,9 @@ async function ensureRuntimeServiceWorker() {
     updateViaCache: "none",
   });
   await registration.update();
-  await navigator.serviceWorker.ready;
+  await navigator.serviceWorker?.ready;
 
-  if (!navigator.serviceWorker.controller) {
+  if (!navigator.serviceWorker?.controller) {
     const alreadyReloaded =
       window.sessionStorage.getItem(CONTROL_RELOAD_KEY) === "1";
     if (!alreadyReloaded) {
@@ -210,7 +262,13 @@ async function updateFrame() {
     serviceWorkerReady = ensureRuntimeServiceWorker();
   }
 
-  await serviceWorkerReady;
+  try {
+    await serviceWorkerReady;
+  } catch (error) {
+    reportServiceWorkerFailure(error);
+    return;
+  }
+
   const url = resolveRemoteUrl(
     scopeId,
     currentRuntimeId,
@@ -483,7 +541,11 @@ function bindShellChannel() {
         remoteFrameBooted = false;
         setUiLocked(false);
         appendLog(message.detail, true);
-        captureMessage(message.detail, "error", { source: "runtime" });
+        // The runtime host classifies what it forwards (an unsupported browser
+        // is a warning, not a regression) so the two group apart in monitoring.
+        captureMessage(message.detail, message.level || "error", {
+          source: message.source || "runtime",
+        });
         if (!latestPhpInfoHtml) {
           capturePhpInfoViaWorker("bootstrap-error");
         }

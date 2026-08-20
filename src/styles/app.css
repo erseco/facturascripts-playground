@@ -645,6 +645,13 @@ button.danger:hover {
   gap: var(--space-md);
 }
 
+/* Fatal variant: the playground cannot start at all (no Service Worker). */
+.wasm-warning-banner--error {
+  background: #fdecea;
+  color: #7f1d1d;
+  border-bottom-color: #dc2626;
+}
+
 .wasm-warning-banner__text {
   flex: 1;
 }

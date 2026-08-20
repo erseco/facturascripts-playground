@@ -56,6 +56,20 @@ function buildDownloadUrl(sourceUrl, proxyBaseUrl) {
   return proxied.toString();
 }
 
+// A bare status number reads like an outage. The download proxy now passes the
+// upstream verdict through instead of flattening it into 502, so name what the
+// common ones actually mean — a stale blueprint pointing at a deleted branch is
+// by far the most frequent one.
+export function describeDownloadFailure(url, status) {
+  if (status === 404 || status === 410) {
+    return `Failed to fetch ${url}: ${status} not found (the repository, branch or release may have been renamed or deleted)`;
+  }
+  if (status === 403 || status === 429) {
+    return `Failed to fetch ${url}: ${status} rate limited or forbidden by the upstream host (try again later)`;
+  }
+  return `Failed to fetch ${url}: ${status}`;
+}
+
 async function fetchBytes(url) {
   const directFetch = globalThis.fetch.bind(globalThis);
   let response = await directFetch(url, {
@@ -71,7 +85,7 @@ async function fetchBytes(url) {
     });
   }
   if (!response.ok)
-    throw new Error(`Failed to fetch ${url}: ${response.status}`);
+    throw new Error(describeDownloadFailure(url, response.status));
   return new Uint8Array(await response.arrayBuffer());
 }
 
