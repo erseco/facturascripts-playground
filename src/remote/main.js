@@ -3,6 +3,12 @@ import { loadActiveBlueprint } from "../shared/blueprint.js";
 import { getDefaultRuntime, loadPlaygroundConfig } from "../shared/config.js";
 import { buildScopedSitePath } from "../shared/paths.js";
 import { createShellChannel } from "../shared/protocol.js";
+import {
+  createServiceWorkerUnsupportedError,
+  isServiceWorkerSupported,
+  isServiceWorkerUnsupportedError,
+  SERVICE_WORKER_UNSUPPORTED_MESSAGE,
+} from "../shared/service-worker-support.js";
 import { saveSessionState } from "../shared/storage.js";
 
 const overlayEl = document.querySelector(".remote-boot__card");
@@ -49,7 +55,13 @@ function emit(scopeId, message) {
 }
 
 async function registerRuntimeServiceWorker(scopeId, runtimeId, coreVersion) {
-  if (navigator.serviceWorker.controller) {
+  // Probe before touching the API: `navigator.serviceWorker` is undefined in
+  // iOS Safari private browsing and in non-secure contexts.
+  if (!isServiceWorkerSupported()) {
+    throw createServiceWorkerUnsupportedError();
+  }
+
+  if (navigator.serviceWorker?.controller) {
     return navigator.serviceWorker.ready;
   }
 
@@ -65,16 +77,17 @@ async function registerRuntimeServiceWorker(scopeId, runtimeId, coreVersion) {
     updateViaCache: "none",
   });
 
-  await navigator.serviceWorker.ready;
+  await navigator.serviceWorker?.ready;
   return registration;
 }
 
 async function waitForServiceWorkerControl() {
-  if (!navigator.serviceWorker.controller) {
+  // Bound to a local so a missing container short-circuits instead of hanging
+  // forever on a "controllerchange" listener that can never be attached.
+  const container = navigator.serviceWorker;
+  if (container && !container.controller) {
     await new Promise((resolve) => {
-      navigator.serviceWorker.addEventListener("controllerchange", resolve, {
-        once: true,
-      });
+      container.addEventListener("controllerchange", resolve, { once: true });
     });
   }
 }
@@ -239,14 +252,14 @@ async function bootstrapRemote() {
   await waitForServiceWorkerControl();
   setRemoteProgress("Service Worker ready and controlling this tab.", 0.12);
 
-  if (navigator.serviceWorker.controller) {
+  if (navigator.serviceWorker?.controller) {
     navigator.serviceWorker.controller.postMessage({
       kind: "configure-service-worker",
       addonProxyUrl: config.addonProxyUrl || null,
     });
   }
 
-  if (forceCleanBoot && navigator.serviceWorker.controller) {
+  if (forceCleanBoot && navigator.serviceWorker?.controller) {
     navigator.serviceWorker.controller.postMessage({
       kind: "clear-static-cache",
     });
@@ -311,7 +324,7 @@ async function bootstrapRemote() {
   });
 
   // Show progress while the iframe loads static assets after bootstrap.
-  navigator.serviceWorker.addEventListener("message", (event) => {
+  navigator.serviceWorker?.addEventListener("message", (event) => {
     if (event.data?.kind === "sw-debug" && bootstrapDone) {
       setRemoteProgress("Loading page assets\u2026", 0.97);
     }
@@ -336,10 +349,23 @@ async function bootstrapRemote() {
 bootstrapRemote().catch((error) => {
   const url = new URL(window.location.href);
   const scopeId = url.searchParams.get("scope");
+  // A browser without Service Workers (iOS Safari private browsing, insecure
+  // context) is an environment limitation, not a runtime regression: the shell
+  // reports it as a warning under its own source so it groups separately.
+  const unsupported = isServiceWorkerUnsupportedError(error);
+  const detail = unsupported
+    ? SERVICE_WORKER_UNSUPPORTED_MESSAGE
+    : String(error?.stack || error?.message || error);
   setOverlayVisible(true);
-  setRemoteProgress(String(error?.message || error));
+  setRemoteProgress(
+    unsupported
+      ? SERVICE_WORKER_UNSUPPORTED_MESSAGE
+      : String(error?.message || error),
+  );
   emit(scopeId, {
     kind: "error",
-    detail: String(error?.stack || error?.message || error),
+    detail,
+    level: unsupported ? "warning" : "error",
+    source: unsupported ? "service-worker-unsupported" : "runtime",
   });
 });
