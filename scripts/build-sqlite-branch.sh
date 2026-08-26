@@ -57,6 +57,13 @@ if [ -f "$FORK_DIR/.git/CHERRY_PICK_HEAD" ]; then
   git -C "$FORK_DIR" cherry-pick --abort >&2 || git -C "$FORK_DIR" reset --hard >&2
 fi
 
+# Identidad local del clon: los commits de mas abajo son de un arbol
+# efimero y no pueden depender de la config global de quien ejecute esto.
+# En un runner de Actions no hay ninguna y `git commit` muere con
+# "empty ident name" a mitad del trabajo.
+git -C "$FORK_DIR" config user.name "facturascripts-playground bot"
+git -C "$FORK_DIR" config user.email "facturascripts-playground@users.noreply.github.com"
+
 git -C "$FORK_DIR" checkout -q -B "$REF_BRANCH" "origin/$REF_BRANCH" >&2
 
 MERGE_BASE=$(git -C "$FORK_DIR" merge-base "origin/$BASE_BRANCH" "$REF_BRANCH")
