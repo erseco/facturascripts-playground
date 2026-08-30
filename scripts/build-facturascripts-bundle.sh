@@ -21,6 +21,13 @@ perl -0pi -e "s/'fileinfo',//g" "$FS_STAGE/Core/Controller/Installer.php"
 perl -0pi -e "s/'bcmath',//g" "$FS_STAGE/Core/Controller/Installer.php"
 perl -pi -e 's/public function updateActivity\(string \$ipAddress, string \$browser/public function updateActivity(string \$ipAddress, ?string \$browser/' "$FS_STAGE/Core/Model/User.php"
 perl -pi -e "s/\\\$browser = \\\$this->request->header\\('User-Agent'\\);/\\\$browser = \\\$this->request->header('User-Agent') ?? '';/" "$FS_STAGE/Core/Base/Controller.php"
+# Forja's metadata endpoints (/PluginInfoList, /DownloadBuild) are not zip-like,
+# so the CORS proxy rejects them with a 400 whose body is {"error": "..."}.
+# Http::json() ignores the status code, so that object decodes into a list of
+# strings and every Forja consumer fatals on "Cannot access offset of type
+# string on string" (AdminPlugins:211, Forja::getBuilds). Keep only well-formed
+# entries: an empty list is the correct offline answer for a readonly core.
+perl -pi -e 's/return (Http::get\(self::(?:BUILDS|PLUGIN_LIST)_URL\)->setTimeout\(10\)->json\(\)) \?\? \[\];/return array_values(array_filter((array) ($1), "is_array"));/' "$FS_STAGE/Core/Internal/Forja.php"
 
 if [ -f "$FS_STAGE/composer.json" ]; then
   if command -v composer >/dev/null 2>&1; then
