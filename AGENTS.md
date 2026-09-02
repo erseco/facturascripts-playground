@@ -387,7 +387,13 @@ Gotcha: run each sibling playground's e2e suite on its own. Playwright reuses an
 
 ## Skills
 
-`.agents/skills/` vendors three upstream skills for tools this project is built with. They are installed with the GitHub CLI, which copies the skill into
+`.agents/skills/` contains one in-house domain skill and vendors three upstream skills for tools this project is built with.
+
+| In-house skill | Read it before |
+|----------------|----------------|
+| `facturascripts-internals` | Changing install/deploy, SQLite integration, plugins, Dinamic models/controllers, companies/users, settings/caches, or FacturaScripts-specific blueprint provisioning |
+
+Vendored skills are installed with the GitHub CLI, which copies the skill into
 `.agents/skills/<name>/` (the directory GitHub Copilot, Codex, Cursor, Gemini CLI and most
 other agents read) and records the upstream repository, path and tree SHA in the `SKILL.md`
 frontmatter so the copy can be refreshed later (`gh skill add` is an alias of `gh skill install`):
