@@ -13,9 +13,9 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@php-wasm/fs-journal": "^3.1.51",
-    "@php-wasm/universal": "^3.1.51",
-    "@php-wasm/web": "^3.1.51",
+    "@php-wasm/fs-journal": "^3.1.52",
+    "@php-wasm/universal": "^3.1.52",
+    "@php-wasm/web": "^3.1.52",
     "zstddec": "^0.2.0"
   },
   "devDependencies": {
