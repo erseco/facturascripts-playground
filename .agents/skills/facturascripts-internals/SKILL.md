@@ -1,6 +1,6 @@
 ---
 name: facturascripts-internals
-description: FacturaScripts domain expert for this php-wasm playground. Use when changing installation and deploy, SQLite integration, plugins, Dinamic models and controllers, companies or users, settings, caches, or FacturaScripts-specific blueprint provisioning.
+description: Change FacturaScripts install/deploy, Dinamic models, plugins, seed data, or SQLite/cache integration in this playground.
 metadata:
   author: facturascripts-playground
   version: "1.0"
@@ -8,7 +8,11 @@ metadata:
 
 # FacturaScripts Internals
 
-Use FacturaScripts' own APIs and lifecycle while preserving the browser/WASM workarounds proven here. Read `CHANGELOG-TECHNICAL.md` before changing runtime behavior; then inspect `src/runtime/bootstrap.js`, `src/runtime/wizard-script.js`, `src/runtime/addons.js`, and the relevant current source.
+Use FacturaScripts' own APIs and lifecycle while preserving the browser/WASM
+workarounds. Consult relevant entries in [the technical log](../../../CHANGELOG-TECHNICAL.md)
+for deploy, SQLite, or cache decisions. Inspect `bootstrap.js` for boot,
+`wizard-script.js` for installation, and `addons.js` for provisioning under
+`src/runtime/`; unrelated edits do not need the whole history.
 
 ## Core source and database
 
@@ -55,6 +59,8 @@ Use FacturaScripts' own APIs and lifecycle while preserving the browser/WASM wor
 - Source patches and compatibility edits must be gated to the WASM/playground need and retained in build/runtime code, not hidden in generated bundles.
 
 ## Verification
+
+Apply the checks relevant to the changed behavior.
 
 - [ ] `Plugins::deploy(true, true)` completes and the `pages` table supports the admin homepage.
 - [ ] Wizard creates company/warehouse/defaults before the admin user and remains idempotent.
