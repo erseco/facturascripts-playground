@@ -55,11 +55,3 @@ export async function mountReadonlyCore(
 
   return { manifest, entries: stats.fileCount };
 }
-
-export async function fetchArrayBuffer(path, cache = "default") {
-  const response = await fetch(path, { cache });
-  if (!response.ok) {
-    throw new Error(`Unable to fetch ${path}: ${response.status}`);
-  }
-  return response.arrayBuffer();
-}
