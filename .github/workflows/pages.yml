@@ -16,11 +16,9 @@ on:
     types: [opened, reopened, synchronize]
   workflow_dispatch:
 
+# Least privilege: jobs that need more request it themselves.
 permissions:
   contents: read
-  pages: write
-  id-token: write
-  pull-requests: write
 
 concurrency:
   group: pages-${{ github.event.pull_request.head.ref || github.ref_name }}
@@ -117,13 +115,13 @@ jobs:
           node-version: 24
           cache: npm
 
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
         with:
           php-version: "8.3"
           tools: composer
 
       - name: Install bundle dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build supported FacturaScripts core
         env:
@@ -165,6 +163,10 @@ jobs:
       - build-core
     if: needs.discover-versions.outputs.changed == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write # actions/configure-pages
+      pull-requests: write # preview URL comment
     steps:
       - uses: actions/checkout@v7
 
@@ -183,7 +185,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       # Compute the deployment Build ID once and export it, so every later step
       # reuses this exact value. This job assembles the single _site that is both
@@ -319,6 +321,9 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
+    permissions:
+      pages: write # actions/deploy-pages
+      id-token: write # actions/deploy-pages OIDC
     steps:
       - id: deployment
         uses: actions/deploy-pages@v5
