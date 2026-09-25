@@ -112,7 +112,13 @@ async function loadServiceWorkerConfig() {
     playgroundConfigPromise = fetch(
       new URL("playground.config.json", self.registration.scope),
       { cache: "no-store" },
-    ).then((r) => (r.ok ? r.json() : {}));
+    )
+      .then((r) => (r.ok ? r.json() : {}))
+      .catch((error) => {
+        // Do not memoize a failure: let the next request retry the fetch.
+        playgroundConfigPromise = undefined;
+        throw error;
+      });
   }
   return playgroundConfigPromise;
 }
