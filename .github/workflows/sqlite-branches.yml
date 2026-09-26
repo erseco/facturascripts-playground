@@ -5,13 +5,17 @@ on:
     - cron: "17 3 * * *"
   workflow_dispatch: {}
 
+# The branch is pushed with FORK_PUSH_TOKEN; GITHUB_TOKEN only reads the repo.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
-      - uses: shivammathur/setup-php@v2
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
         with:
           php-version: "8.3"
           tools: composer
@@ -42,7 +46,7 @@ jobs:
           UPDATE_CONFIG: "false"
         run: |
           set -euo pipefail
-          npm install
+          npm ci
           # Se construye con FS_CHANNEL=stable, la misma variable que usa el
           # deploy publico, para ejercitar de verdad la resolucion del canal.
           # FS_REF apunta al clon local (que ya tiene la rama generada) en vez
