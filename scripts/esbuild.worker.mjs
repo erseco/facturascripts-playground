@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { readFileSync, rmSync } from "node:fs";
+import { readdirSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -146,6 +146,22 @@ await build({
     "process.env.NODE_ENV": '"production"',
   },
 });
+
+// Fail the build instead of shipping a worker that 404s on its PHP binary
+// (e.g. if a php-wasm update changes how the loaders reference the .wasm and
+// phpWasmUrlToImport stops matching).
+const emitted = readdirSync(resolvePath(repoDir, "dist"));
+const missingWasm = keepVersions.filter(
+  (v) =>
+    !emitted.some(
+      (f) => f.startsWith(`php_${v.replace("-", "_")}-`) && f.endsWith(".wasm"),
+    ),
+);
+if (missingWasm.length > 0) {
+  throw new Error(
+    `No .wasm emitted for PHP ${missingWasm.join(", ")}; check phpWasmUrlToImport against the installed @php-wasm/web-* loaders`,
+  );
+}
 
 // The cache version lives in src/generated/build-version.js, written by
 // scripts/write-build-version.mjs (`npm run build:version`). It used to be a
