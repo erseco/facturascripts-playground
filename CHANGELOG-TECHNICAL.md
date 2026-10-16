@@ -6,6 +6,30 @@ are the way they are and avoid re-investigating solved problems.
 
 ---
 
+## Service Worker asset cache policy and crash toolbar unlock
+
+**Date:** 2026-10-16
+**Context:** Ported from moodle-playground PR #341 (ADR-0034 and its crash
+recovery follow-up) after a review of the shared shell/worker code.
+
+### Decision
+
+- `src/shared/sw-asset-cache.js` decides what the scoped page-asset cache
+  stores: only `200`, non-HTML responses without `no-store`/`no-cache`. A path
+  that only ends in `.js`/`.png` through PHP PATH_INFO needs an explicit
+  `max-age`, because PHP can serve changing content at a stable URL. Cached hits
+  are re-checked, so entries stored by the old "any 2xx" rule are bypassed.
+- The page-asset cache is keyed by `BUILD_VERSION` (`fs-static-assets-<build>`)
+  and `activate` drops older generations, including `fs-static-assets-v1`, which
+  was previously cleared only on a clean boot and could serve a previous
+  deploy's assets.
+- After a crash on a request that is not replayed (POST), the worker still
+  answers `503` without resending it, then boots the replacement runtime
+  (`bootAfterUnreplayedCrash`). Its `ready` unlocks the toolbar that "Runtime
+  rotation" locked; an AJAX POST never reloads the frame, so nothing else did.
+
+---
+
 ## OPcache isolation across core versions
 
 **Date:** 2026-07-22

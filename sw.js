@@ -1,5 +1,6 @@
 import { BUILD_VERSION } from "./src/generated/build-version.js";
 import { createPhpBridgeChannel, createWorkerRequestId } from "./src/shared/protocol.js";
+import { isCacheableAssetResponse, isStaticAssetPath } from "./src/shared/sw-asset-cache.js";
 
 const INTERNAL_PROXY_PATH = "/__playground_proxy__";
 // Cache-first store for the immutable, hash-named runtime assets under /dist/
@@ -19,13 +20,10 @@ const clientContexts = new Map();
 
 // Static assets served via PHP are cached after the first request to avoid
 // re-queuing them through the serial PHP worker on every page navigation.
-const STATIC_ASSET_CACHE = "fs-static-assets-v1";
-const STATIC_ASSET_RE =
-  /\.(css|js|mjs|woff2?|ttf|otf|eot|png|jpg|jpeg|gif|svg|ico|webp|map)$/iu;
-
-function isStaticAssetPath(requestPath) {
-  return STATIC_ASSET_RE.test(requestPath.split("?")[0]);
-}
+// Keyed by build so `activate` drops the previous deploy's assets; which
+// responses may be stored lives in src/shared/sw-asset-cache.js.
+const STATIC_ASSET_CACHE_PREFIX = "fs-static-assets-";
+const STATIC_ASSET_CACHE = `${STATIC_ASSET_CACHE_PREFIX}${BUILD_VERSION}`;
 
 function isCacheableDist(pathname) {
   return CACHEABLE_DIST_RE.test(stripAppBasePath(pathname));
@@ -458,13 +456,16 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
-      // Drop /dist caches from older builds before claiming clients.
+      // Drop /dist and page-asset caches from older builds (including the
+      // unversioned fs-static-assets-v1) before claiming clients.
       const names = await caches.keys();
       await Promise.all(
         names
           .filter(
             (name) =>
-              name.startsWith("fs-dist-") && name !== STATIC_DIST_CACHE,
+              (name.startsWith("fs-dist-") && name !== STATIC_DIST_CACHE) ||
+              (name.startsWith(STATIC_ASSET_CACHE_PREFIX) &&
+                name !== STATIC_ASSET_CACHE),
           )
           .map((name) => caches.delete(name)),
       );
@@ -533,7 +534,8 @@ self.addEventListener("fetch", (event) => {
     if (event.request.method === "GET" && isStaticAssetPath(requestPath)) {
       const cache = await caches.open(STATIC_ASSET_CACHE);
       const cached = await cache.match(url.toString());
-      if (cached) return cached;
+      // Re-check on read so entries stored under the old policy are bypassed.
+      if (cached && isCacheableAssetResponse(requestPath, cached)) return cached;
 
       await broadcastToClients({ kind: "sw-debug", detail: `[sw-bridge] cache miss → worker: ${requestPath}` });
       const fresh = await forwardToPhpWorker({
@@ -542,7 +544,7 @@ self.addEventListener("fetch", (event) => {
         scopeId,
       }).catch((error) => buildErrorResponse(String(error?.stack || error?.message || error)));
 
-      if (fresh.ok) {
+      if (isCacheableAssetResponse(requestPath, fresh)) {
         cache.put(url.toString(), fresh.clone()).catch(() => {});
       }
       return fresh;
