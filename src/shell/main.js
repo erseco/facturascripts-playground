@@ -18,6 +18,7 @@ import {
   captureException,
   captureMessage,
   initMonitoring,
+  runtimeErrorExtra,
 } from "../shared/monitoring.js";
 import {
   blueprintSourceKey,
@@ -553,9 +554,11 @@ function bindShellChannel() {
         appendLog(message.detail, true);
         // The runtime host classifies what it forwards (an unsupported browser
         // is a warning, not a regression) so the two group apart in monitoring.
-        captureMessage(message.detail, message.level || "error", {
-          source: message.source || "runtime",
-        });
+        captureMessage(
+          message.detail,
+          message.level || "error",
+          runtimeErrorExtra(message),
+        );
         if (!latestPhpInfoHtml) {
           capturePhpInfoViaWorker("bootstrap-error");
         }
