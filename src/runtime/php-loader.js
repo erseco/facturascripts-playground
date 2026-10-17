@@ -9,7 +9,6 @@ import {
   loadWebRuntime,
 } from "@php-wasm/web";
 import { FS_ROOT } from "./bootstrap.js";
-import { buildOpcacheKey } from "./fs-persistence.js";
 import { wrapPhpInstance } from "./php-compat.js";
 
 const PERSIST_ROOT = "/persist";
@@ -57,7 +56,7 @@ const PHP_INI_ENTRIES = {
   "openssl.cafile": TCP_OVER_FETCH_CA_PATH,
   "curl.cainfo": TCP_OVER_FETCH_CA_PATH,
   // OPcache tuning — compiled bytecode is kept in /internal/shared/opcache
-  // (file cache only; fs-persistence journals it per PHP version + core SHA).
+  // (file cache only; not journaled, rebuilt every session).
   // Timestamps ARE validated: PHP <= 8.4 never starts OPcache under the `wasm`
   // SAPI (see OPCACHE_SAPI_NAME), but PHP 8.5 dropped the SAPI whitelist and
   // runs this cache for real, and PHP files do change within a session
@@ -119,7 +118,6 @@ export function createPhpRuntime(
   } = {},
 ) {
   const resolvedPhpVersion = phpVersion || DEFAULT_PHP_VERSION;
-  const opcacheKey = buildOpcacheKey(resolvedPhpVersion, coreIdentity);
   let wrapped = null;
   let persistenceController = null;
 
@@ -163,20 +161,17 @@ export function createPhpRuntime(
 
       // Replay/start fs-journal persistence for mutable paths.
       if (scopeId) {
-        const { clearJournal, clearOpcacheJournal, initFsPersistence } =
+        const { clearJournal, dropLegacyOpcacheJournals, initFsPersistence } =
           await import("./fs-persistence.js");
-        // On a clean boot (reset / blueprint change), wipe the old journals
+        // On a clean boot (reset / blueprint change), wipe the old journal
         // first; then ALWAYS start journaling so the fresh env persists on later
         // reloads (a same-blueprint reload then reuses it, no reinstall).
         if (forceCleanBoot) {
           await clearJournal(scopeId);
-          await clearOpcacheJournal(opcacheKey);
         }
-        persistenceController = await initFsPersistence(
-          php,
-          scopeId,
-          opcacheKey,
-        );
+        // OPcache bytecode is no longer persisted; drop stores older sessions left.
+        dropLegacyOpcacheJournals(resolvedPhpVersion, coreIdentity);
+        persistenceController = await initFsPersistence(php, scopeId);
       }
 
       // The default auto_prepend_file at /internal/shared/auto_prepend_file.php

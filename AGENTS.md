@@ -46,10 +46,12 @@ extraction aligned. Generated output is under `assets/facturascripts/`,
   stable branch. Local source overrides use `FS_REF` and `FS_REF_BRANCH`.
   See the [channel design](docs/superpowers/specs/2026-07-31-sqlite-version-branches-design.md)
   and current build scripts when changing source selection.
-- `facturascripts-fs-journal:<scope>` persists mutable state. OPcache has a separate
-  namespace keyed by **PHP version and exact core bundle SHA-256**, not PHP version
-  alone. Keep bytecode from different bundles isolated. Clean boot clears both
-  the scope journal and the selected OPcache journal.
+- `facturascripts-fs-journal:<scope>` persists mutable state; clean boot clears it.
+  OPcache bytecode (`/internal/shared/opcache`) is not persisted: the bundle is
+  re-extracted with fresh mtimes every boot, so a journaled cache never validated.
+  Boots delete the retired `facturascripts-opcache:*` stores. OPcache itself is
+  inert under the `wasm` SAPI unless `?opcache=1` is used; see
+  [docs/development.md](docs/development.md#opcache-cache-de-bytecode-php).
 - First deploy uses `Plugins::deploy(true, true)` to populate controller/page data;
   otherwise `users.homepage` foreign keys can fail. Wizard defaults and company/
   warehouse records must exist before the admin user is saved.

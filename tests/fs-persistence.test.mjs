@@ -2,21 +2,57 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  buildOpcacheKey,
   collapseAndHydrate,
+  dropLegacyOpcacheJournals,
   flushPendingOps,
-  opcacheDatabaseName,
   operationTouchesPathPrefix,
 } from "../src/runtime/fs-persistence.js";
 
-test("OPcache persistence is isolated by PHP and exact core identity", () => {
-  const stable = opcacheDatabaseName(buildOpcacheKey("8.5", "stable-sha"));
-  const beta = opcacheDatabaseName(buildOpcacheKey("8.5", "beta-sha"));
-  const olderPhp = opcacheDatabaseName(buildOpcacheKey("8.4", "stable-sha"));
+// The cross-session OPcache store was retired (restored bytecode never passed
+// timestamp validation). Boot must delete what older sessions left — the two
+// known names even without indexedDB.databases(), every legacy name with it —
+// and never touch the fs journal.
+test("dropLegacyOpcacheJournals deletes only retired facturascripts-opcache stores", async () => {
+  const deleted = [];
+  const withEnumeration = {
+    deleteDatabase: (name) => deleted.push(name),
+    databases: async () => [
+      { name: "facturascripts-opcache:8.3:stable-sha" },
+      { name: "facturascripts-opcache:8.2:old-sha" },
+      { name: "facturascripts-opcache:8.3" },
+      { name: "facturascripts-fs-journal:scope-1" },
+      { name: "facturascripts-opcache" },
+    ],
+  };
+  const requested = await dropLegacyOpcacheJournals(
+    "8.3",
+    "stable-sha",
+    withEnumeration,
+  );
+  assert.deepEqual(requested.sort(), [
+    "facturascripts-opcache:8.2:old-sha",
+    "facturascripts-opcache:8.3",
+    "facturascripts-opcache:8.3:stable-sha",
+  ]);
+  assert.deepEqual(deleted.sort(), requested.sort());
 
-  assert.notEqual(stable, beta);
-  assert.notEqual(stable, olderPhp);
-  assert.equal(stable, "facturascripts-opcache:8.5:stable-sha");
+  const deletedWithout = [];
+  const withoutEnumeration = {
+    deleteDatabase: (name) => deletedWithout.push(name),
+  };
+  assert.deepEqual(
+    await dropLegacyOpcacheJournals("8.3", "stable-sha", withoutEnumeration),
+    ["facturascripts-opcache:8.3", "facturascripts-opcache:8.3:stable-sha"],
+  );
+  assert.deepEqual(deletedWithout, [
+    "facturascripts-opcache:8.3",
+    "facturascripts-opcache:8.3:stable-sha",
+  ]);
+
+  assert.deepEqual(
+    await dropLegacyOpcacheJournals("8.3", "stable-sha", undefined),
+    [],
+  );
 });
 
 // Regression guard for the journal-flush OOM: a heavy install rewrites the same

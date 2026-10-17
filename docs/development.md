@@ -174,9 +174,8 @@ Cuando cambies runtime, routing o almacenamiento, usa esa suite como primer filt
 ## OPcache (cache de bytecode PHP)
 
 `src/runtime/php-loader.js` configura la cache en disco de OPcache
-(`opcache.file_cache_only=1` en `/internal/shared/opcache`, persistida por
-`fs-persistence.js` con una clave de version de PHP + SHA-256 del bundle).
-Lo que hace realmente depende de la version de PHP:
+(`opcache.file_cache_only=1` en `/internal/shared/opcache`; no se persiste, se
+reconstruye en cada sesion). Lo que hace realmente depende de la version de PHP:
 
 - **PHP 8.1-8.4**: OPcache no arranca bajo el nombre de SAPI `wasm` de php-wasm
   (lista blanca de php-src), asi que la cache esta inerte salvo que se active
@@ -187,8 +186,7 @@ Lo que hace realmente depende de la version de PHP:
   declare el SAPI `uwsgi` antes de la primera peticion y OPcache arranque tambien
   en 8.1-8.4. Ningun `php_sapi_name()`/`PHP_SAPI` del nucleo ni de `vendor/`
   distingue ese nombre (todos comparan con `cli`). Cuesta memoria WASM extra
-  (en Moodle Playground, +32..71 MiB) y escribe los `.bin` en el journal de
-  OPcache de IndexedDB.
+  (en Moodle Playground, +32..71 MiB).
 
 Con la cache activa se cumple siempre:
 
@@ -200,9 +198,15 @@ Con la cache activa se cumple siempre:
 - `/internal/eval.php`, la ruta que reutiliza cada `php.run({ code })`, esta en
   `opcache.blacklist_filename` y nunca se cachea.
 - `opcache_reset()` y `opcache_invalidate()` no hacen nada en modo solo-fichero;
-  la unica invalidacion es la de `mtime`. Como la extraccion del bundle da a
-  cada fichero el `mtime` del arranque, los `.bin` restaurados del journal de
-  una sesion anterior no validan y se recompilan.
+  la unica invalidacion es la de `mtime`.
+- El bytecode **no** se journaliza. Hasta octubre de 2026 `fs-persistence.js`
+  copiaba `/internal/shared/opcache` al almacen de IndexedDB
+  `facturascripts-opcache:<php>:<sha256 del bundle>`; como la extraccion del
+  bundle da a cada fichero el `mtime` del arranque, ningun `.bin` restaurado
+  pasaba la validacion y con la cache activa el journal solo costaba escrituras
+  (Nextcloud Playground midio +10 s por arranque limpio). El almacen se elimino;
+  cada arranque borra las bases `facturascripts-opcache:*` que dejaran sesiones
+  anteriores.
 
 Decision y auditoria del nombre de SAPI en
 [CHANGELOG-TECHNICAL.md](https://github.com/erseco/facturascripts-playground/blob/main/CHANGELOG-TECHNICAL.md).

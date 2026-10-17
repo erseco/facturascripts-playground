@@ -47,17 +47,25 @@ snippet shared the single cache entry of `/internal/eval.php`.
   `uwsgi`, `cgi`, `fpm` and `apache` never appear as literals. A `cgi*` name was
   rejected because PHP's CGI SAPIs emit a `Status:` header instead of the HTTP
   status line.
-- The cross-session OPcache journal (`facturascripts-opcache:<php>:<core sha>`)
-  is unchanged. The bundle extractor gives every file the boot's `mtime`, so
-  with timestamp validation the restored `.bin` files never validate and are
-  recompiled: the journal currently costs writes without saving compile time.
-  Preserving tar `mtime`s in the extractor would make it effective; dropping the
-  journal is the alternative. Not decided here.
+- The cross-session OPcache journal (`facturascripts-opcache:<php>:<core sha>`,
+  "OPcache isolation across core versions" below) is removed, mirroring
+  nextcloud-playground#105. The bundle extractor gives every file the boot's
+  `mtime`, so with timestamp validation no restored `.bin` ever validated: the
+  store had no cross-session benefit and, once the cache is live, every
+  debounced flush rewrote thousands of `.bin` files (Nextcloud Playground
+  measured +10 s per clean boot). `initFsPersistence()` journals `/persist`
+  only; `dropLegacyOpcacheJournals()` deletes the retired stores on every boot
+  (the two names the current runtime could have used explicitly, every
+  `facturascripts-opcache:*` name where `indexedDB.databases()` exists),
+  fire-and-forget so a tab still holding a store open cannot block boot.
+  Reloads recompile from scratch, which is the ephemeral model this playground
+  follows.
 
-**Files:** `src/runtime/php-loader.js`, `src/shared/config.js`,
-`src/shared/paths.js`, `src/shell/main.js`, `src/remote/main.js`,
-`php-worker.js`, `playground.config.json`, `tests/php-loader-opcache.test.mjs`,
-`tests/opcache-flag.test.mjs`, `docs/development.md`, `README.md`
+**Files:** `src/runtime/php-loader.js`, `src/runtime/fs-persistence.js`,
+`src/shared/config.js`, `src/shared/paths.js`, `src/shell/main.js`,
+`src/remote/main.js`, `php-worker.js`, `playground.config.json`,
+`tests/php-loader-opcache.test.mjs`, `tests/opcache-flag.test.mjs`,
+`tests/fs-persistence.test.mjs`, `docs/development.md`, `README.md`, `AGENTS.md`
 
 ---
 

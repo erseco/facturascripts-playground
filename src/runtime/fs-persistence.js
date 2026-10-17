@@ -7,18 +7,17 @@ import {
 import { __private__dont__use } from "@php-wasm/universal";
 
 const PERSIST_DB_PREFIX = "facturascripts-fs-journal";
-const OPCACHE_DB_PREFIX = "facturascripts-opcache";
+// Until October 2026 /internal/shared/opcache was journaled to IndexedDB under
+// this prefix (`<prefix>:<phpVersion>` first, then `<prefix>:<phpVersion>:<core
+// sha256>`). The bundle is re-extracted with fresh mtimes on every boot, so once
+// OPcache validates timestamps (it must, see docs/development.md "OPcache") no
+// restored .bin ever matched: the store only cost IndexedDB writes (Nextcloud
+// Playground measured +10 s per clean boot with the cache live). Kept only to
+// delete what old sessions left.
+const LEGACY_OPCACHE_DB_PREFIX = "facturascripts-opcache";
 const DB_VERSION = 1;
 const STORE_NAME = "ops";
 const FLUSH_DELAY_MS = 1500;
-
-export function buildOpcacheKey(phpVersion, coreIdentity = "default") {
-  return `${phpVersion}:${coreIdentity || "default"}`;
-}
-
-export function opcacheDatabaseName(opcacheKey) {
-  return `${OPCACHE_DB_PREFIX}:${opcacheKey}`;
-}
 
 async function openDb(name) {
   return new Promise((resolve, reject) => {
@@ -255,8 +254,47 @@ export async function clearJournal(scopeId) {
   await clearDb(`${PERSIST_DB_PREFIX}:${scopeId}`);
 }
 
-export async function clearOpcacheJournal(opcacheKey) {
-  await clearDb(opcacheDatabaseName(opcacheKey));
+/**
+ * Delete the retired `facturascripts-opcache:*` databases. Fire-and-forget: a
+ * deleteDatabase request stays "blocked" while an older tab still holds the
+ * store open, and boot must not wait for that. `indexedDB.databases()` is not
+ * available everywhere, so the two names this playground ever used for the
+ * current runtime (`<prefix>:<phpVersion>` and `<prefix>:<phpVersion>:<core>`)
+ * are always requested explicitly.
+ */
+export function dropLegacyOpcacheJournals(
+  phpVersion,
+  coreIdentity = "default",
+  idb = globalThis.indexedDB,
+) {
+  if (!idb) return Promise.resolve([]);
+  const requested = new Set();
+  const drop = (name) => {
+    if (!name?.startsWith(`${LEGACY_OPCACHE_DB_PREFIX}:`)) return;
+    if (requested.has(name)) return;
+    requested.add(name);
+    try {
+      idb.deleteDatabase(name);
+    } catch {
+      /* ignore: nothing to delete or storage blocked */
+    }
+  };
+  drop(`${LEGACY_OPCACHE_DB_PREFIX}:${phpVersion}`);
+  drop(
+    `${LEGACY_OPCACHE_DB_PREFIX}:${phpVersion}:${coreIdentity || "default"}`,
+  );
+  const enumerate =
+    typeof idb.databases === "function"
+      ? Promise.resolve()
+          .then(() => idb.databases())
+          .then((list) => {
+            for (const entry of list || []) drop(entry?.name);
+          })
+      : Promise.resolve();
+  return enumerate.then(
+    () => [...requested],
+    () => [...requested],
+  );
 }
 
 /**
@@ -284,31 +322,23 @@ function replayResilient(rawPhp, ops) {
 }
 
 /**
- * Replays the persisted FS journals onto a fresh PHP instance, then starts
+ * Replays the persisted FS journal onto a fresh PHP instance, then starts
  * journaling new changes back to IndexedDB.
  *
  * - /persist  → keyed by scopeId (per-session mutable data: DB, config, session)
- * - /internal/shared/opcache → keyed by PHP version + exact core identity
  *
- * Persisting OPcache means PHP only compiles each file once across reloads,
- * making the second and subsequent sessions dramatically faster.
+ * /internal/shared/opcache is deliberately NOT journaled: compiled bytecode is
+ * rebuilt every session (see LEGACY_OPCACHE_DB_PREFIX).
  */
-export async function initFsPersistence(rawPhp, scopeId, opcacheKey) {
+export async function initFsPersistence(rawPhp, scopeId) {
   const persistDb = await openDb(`${PERSIST_DB_PREFIX}:${scopeId}`);
-  const opcacheDb = opcacheKey
-    ? await openDb(opcacheDatabaseName(opcacheKey))
-    : null;
 
   const pendingPersistOps = [];
-  const pendingOpcacheOps = [];
   const persistFlusher = createJournalFlusher(
     rawPhp,
     persistDb,
     pendingPersistOps,
   );
-  const opcacheFlusher = opcacheDb
-    ? createJournalFlusher(rawPhp, opcacheDb, pendingOpcacheOps)
-    : null;
 
   // Journal /persist — mutable app data (DB, config, sessions).
   // Skip ephemeral SQLite temp files — they are created and deleted within
@@ -319,46 +349,12 @@ export async function initFsPersistence(rawPhp, scopeId, opcacheKey) {
     persistFlusher.scheduleFlush();
   });
 
-  // Journal /internal/shared/opcache — PHP compiled bytecode.
-  // Persisting this across sessions means PHP does not recompile on every reload.
-  if (opcacheDb) {
-    journalFSEvents(rawPhp, "/internal/shared/opcache", (op) => {
-      pendingOpcacheOps.push(op);
-      opcacheFlusher.scheduleFlush();
-    });
-  }
-
   // Replay saved ops onto the fresh MEMFS instance.
-  // OPcache ops are replayed first so PHP finds the bytecode before any script runs.
-  if (opcacheDb) {
-    const savedOpcacheOps = await loadOps(opcacheDb);
-    replayResilient(rawPhp, savedOpcacheOps);
-  }
-
   const savedPersistOps = await loadOps(persistDb);
   replayResilient(rawPhp, savedPersistOps);
 
   return {
-    async flushNow({ pathPrefix = null, maxBytes } = {}) {
-      const persistResult = await persistFlusher.flushNow({
-        pathPrefix,
-        maxBytes,
-      });
-      if (pathPrefix || !opcacheFlusher) {
-        return persistResult;
-      }
-
-      const opcacheResult = await opcacheFlusher.flushNow();
-      return {
-        ok: persistResult.ok && opcacheResult.ok,
-        reason: persistResult.reason || opcacheResult.reason,
-        error: persistResult.error || opcacheResult.error,
-        flushedOps: persistResult.flushedOps + opcacheResult.flushedOps,
-        hydratedBytes:
-          persistResult.hydratedBytes + opcacheResult.hydratedBytes,
-        estimatedBytes:
-          persistResult.estimatedBytes + opcacheResult.estimatedBytes,
-      };
-    },
+    flushNow: ({ pathPrefix = null, maxBytes } = {}) =>
+      persistFlusher.flushNow({ pathPrefix, maxBytes }),
   };
 }
