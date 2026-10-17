@@ -186,7 +186,12 @@ reconstruye en cada sesion). Lo que hace realmente depende de la version de PHP:
   declare el SAPI `uwsgi` antes de la primera peticion y OPcache arranque tambien
   en 8.1-8.4. Ningun `php_sapi_name()`/`PHP_SAPI` del nucleo ni de `vendor/`
   distingue ese nombre (todos comparan con `cli`). Cuesta memoria WASM extra
-  (en Moodle Playground, +32..71 MiB).
+  (en Moodle Playground, +32..71 MiB). La casilla «OPcache file cache» del panel
+  Info escribe ese mismo parametro en la URL (`history.replaceState`) y recarga
+  solo el iframe del runtime (nuevo worker, mismo scope): no es un reset, los
+  datos de `/persist` se conservan. Pulsar «Apply & Reload» con el cambio
+  pendiente aplica; cambiar ademas la version de PHP o del nucleo vuelve al
+  flujo destructivo de siempre («Apply & Reset»).
 
 Con la cache activa se cumple siempre:
 

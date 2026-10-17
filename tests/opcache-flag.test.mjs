@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { OPCACHE_SAPI_NAME } from "../src/runtime/php-loader.js";
-import { isOpcacheEnabled } from "../src/shared/config.js";
+import { isOpcacheEnabled, opcacheUrlParam } from "../src/shared/config.js";
 import { resolveRemoteUrl } from "../src/shared/paths.js";
 
 describe("isOpcacheEnabled", () => {
@@ -17,6 +17,18 @@ describe("isOpcacheEnabled", () => {
     assert.equal(isOpcacheEnabled("true", {}), true);
     for (const off of ["0", "false", "off", "no", "OFF"]) {
       assert.equal(isOpcacheEnabled(off, { opcache: true }), false, off);
+    }
+  });
+});
+
+describe("opcacheUrlParam", () => {
+  it("round-trips through isOpcacheEnabled and omits the parameter at the config default", () => {
+    for (const config of [{}, { opcache: false }, { opcache: true }]) {
+      for (const enabled of [true, false]) {
+        const param = opcacheUrlParam(enabled, config);
+        assert.equal(isOpcacheEnabled(param, config), enabled);
+        assert.equal(param === null, enabled === (config.opcache === true));
+      }
     }
   });
 });
