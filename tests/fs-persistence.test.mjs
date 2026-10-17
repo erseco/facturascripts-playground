@@ -3,10 +3,74 @@ import { test } from "node:test";
 
 import {
   collapseAndHydrate,
+  createJournalFlusher,
   dropLegacyOpcacheJournals,
   flushPendingOps,
   operationTouchesPathPrefix,
 } from "../src/runtime/fs-persistence.js";
+
+// Restarting the runtime right after flushNow() resolves tears the worker down.
+// If a debounced flush had already drained pendingOps and was still inside its
+// IndexedDB transaction, flushNow() saw nothing pending and resolved at once, so
+// the restart aborted that transaction and the batch was lost.
+test("flushNow waits for a debounced flush that is still committing", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let writeStarted;
+  const started = new Promise((resolve) => {
+    writeStarted = resolve;
+  });
+  let commit;
+  const persisted = [];
+  const db = {
+    transaction(_store, mode) {
+      const tx = {
+        objectStore: () => ({
+          getAll() {
+            const req = {};
+            queueMicrotask(() => {
+              req.result = [...persisted];
+              req.onsuccess();
+            });
+            return req;
+          },
+          clear: () => {
+            persisted.length = 0;
+          },
+          add: (op) => persisted.push(op),
+        }),
+      };
+      if (mode === "readwrite") {
+        commit = () => tx.oncomplete();
+        writeStarted();
+      }
+      return tx;
+    },
+  };
+  const pendingOps = [
+    { operation: "WRITE", path: "/persist/state.json", nodeType: "file" },
+  ];
+  const flusher = createJournalFlusher(
+    { readFileAsBuffer: () => new Uint8Array([1]) },
+    db,
+    pendingOps,
+  );
+
+  flusher.scheduleFlush();
+  t.mock.timers.tick(1500);
+  await started;
+  assert.equal(pendingOps.length, 0, "the debounced flush drained the ops");
+
+  let settled = false;
+  const flushed = flusher.flushNow().then(() => {
+    settled = true;
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(settled, false, "flushNow resolved before the commit");
+
+  commit();
+  await flushed;
+  assert.equal(persisted.length, 1);
+});
 
 // The cross-session OPcache store was retired (restored bytecode never passed
 // timestamp validation). Boot must delete what older sessions left — the two

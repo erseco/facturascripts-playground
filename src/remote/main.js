@@ -217,6 +217,11 @@ function bindShellCommands(scopeId, runtimeId) {
       phpWorker.postMessage({ kind: "capture-phpinfo" });
       return;
     }
+
+    if (message?.kind === "flush-persistence" && phpWorker) {
+      phpWorker.postMessage({ kind: "flush-persistence" });
+      return;
+    }
   });
 }
 

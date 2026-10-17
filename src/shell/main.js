@@ -118,6 +118,7 @@ let remoteFrameBooted = false;
 let uiLocked = true;
 let remoteReloadToken = 0;
 let pendingCleanBoot = false;
+let pendingPersistenceFlush = null;
 let latestPhpInfoHtml = "";
 const CONTROL_RELOAD_KEY = `facturascripts-playground:${scopeId}:sw-controlled`;
 
@@ -566,6 +567,11 @@ function bindShellChannel() {
         setPhpInfoContent(message.html || "");
         appendLog(message.detail || "Captured PHP runtime diagnostics.");
         break;
+      case "persistence-flushed":
+        appendLog(message.detail || "Persistence journal flushed.");
+        pendingPersistenceFlush?.();
+        pendingPersistenceFlush = null;
+        break;
       case "trace":
         appendLog(message.detail || "[trace]");
         break;
@@ -668,7 +674,7 @@ function updateConfigState() {
   refreshDirtyState();
 }
 
-function applyConfigAndReset() {
+async function applyConfigAndReset() {
   const newRuntimeId = els.infoPhpVersion?.value;
   const newCoreVersion = els.infoCoreVersion?.value || "";
   const newOpcache = els.infoOpcache
@@ -696,6 +702,10 @@ function applyConfigAndReset() {
       `Experimental OPcache ${newOpcache ? "enabled" : "disabled"}; restarting PHP`,
     );
   }
+  if (!runtimeChanged && !coreChanged) {
+    // Data survives this restart, so the debounced journal must land first.
+    await flushRemotePersistence();
+  }
   currentRuntimeId = newRuntimeId;
   currentCoreVersion = newCoreVersion;
   remoteFrameBooted = false;
@@ -719,6 +729,36 @@ function applyConfigAndReset() {
   pendingCleanBoot = runtimeChanged;
   setPhpInfoContent("");
   void updateFrame();
+}
+
+// Ask the worker (via the runtime host) to flush the /persist journal and wait
+// for its "persistence-flushed" reply. The flush rewrites the journal store
+// (SQLite DB included), which takes seconds on slow machines; the cap only
+// keeps a wedged runtime from blocking the panel forever.
+function flushRemotePersistence(timeoutMs = 60_000) {
+  if (!remoteFrameBooted) {
+    return Promise.resolve();
+  }
+  appendLog("Flushing the persistence journal before restarting PHP.");
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      pendingPersistenceFlush = null;
+      appendLog(
+        "Persistence flush did not finish in time; restarting anyway.",
+        true,
+      );
+      resolve();
+    }, timeoutMs);
+    pendingPersistenceFlush = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    if (!postToRemote({ kind: "flush-persistence" })) {
+      clearTimeout(timer);
+      pendingPersistenceFlush = null;
+      resolve();
+    }
+  });
 }
 
 async function main() {

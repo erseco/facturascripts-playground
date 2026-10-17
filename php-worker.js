@@ -454,12 +454,31 @@ async function capturePhpInfo() {
   }
 }
 
+// The shell asks for this before swapping the runtime iframe to toggle OPcache.
+// The journal flush is debounced (fs-persistence FLUSH_DELAY_MS); a restart
+// before it lands would drop the last batch of /persist writes.
+async function flushPersistenceForShell() {
+  let detail = "Persistence journal flushed.";
+  try {
+    const state = await getRuntimeState();
+    await state.php.flushPersistence();
+  } catch (error) {
+    detail = `Persistence flush failed: ${formatErrorDetail(error)}`;
+  }
+  postShell({ kind: "persistence-flushed", detail });
+}
+
 function installMessageListener() {
   self.addEventListener("message", (event) => {
     const data = event.data;
 
     if (data?.kind === "capture-phpinfo") {
       void capturePhpInfo();
+      return;
+    }
+
+    if (data?.kind === "flush-persistence") {
+      void flushPersistenceForShell();
       return;
     }
 

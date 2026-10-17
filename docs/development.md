@@ -189,9 +189,14 @@ reconstruye en cada sesion). Lo que hace realmente depende de la version de PHP:
   (en Moodle Playground, +32..71 MiB). La casilla «OPcache file cache» del panel
   Info escribe ese mismo parametro en la URL (`history.replaceState`) y recarga
   solo el iframe del runtime (nuevo worker, mismo scope): no es un reset, los
-  datos de `/persist` se conservan. Pulsar «Apply & Reload» con el cambio
+  datos de `/persist` se conservan. Antes de cambiar el iframe, el shell pide al
+  worker que vuelque el journal (`flush-persistence`, respuesta
+  `persistence-flushed`, maximo 60 s) para no perder el ultimo lote pendiente
+  del debounce; `flushNow()` espera ademas a un volcado ya en curso antes de
+  devolver. Pulsar «Apply & Reload» con el cambio
   pendiente aplica; cambiar ademas la version de PHP o del nucleo vuelve al
-  flujo destructivo de siempre («Apply & Reset»).
+  flujo destructivo de siempre («Apply & Reset»). Un F5 o el boton de reinicio
+  siguen sin volcar el journal antes de recargar.
 
 Con la cache activa se cumple siempre:
 
