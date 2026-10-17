@@ -6,6 +6,69 @@ are the way they are and avoid re-investigating solved problems.
 
 ---
 
+## OPcache file cache validation and experimental activation
+
+**Date:** 2026-10-17
+**Context:** Ported from moodle-playground ADR-0038 and ADR-0039
+(ateeducacion/moodle-playground#343, #344). php-src <= 8.4 only starts OPcache
+for a whitelist of SAPI names, and php-wasm reports `wasm`, so the file cache
+configured since "OPcache isolation across core versions" has been inert on
+PHP 8.1-8.4. PHP 8.5 removed the whitelist (php-src `3088d6406847`): on the
+PHP 8.5 runtime the cache was live with `validate_timestamps=0`, so a PHP file
+rewritten within the session (Plugins::deploy regenerating `Dinamic/`, plugin
+installs) kept executing its old bytecode, and every `php.run({ code })`
+snippet shared the single cache entry of `/internal/eval.php`.
+`opcache_reset()`/`opcache_invalidate()` are no-ops in file-cache-only mode.
+
+### Decision
+
+- `opcache.validate_timestamps=1`, `opcache.revalidate_freq=0`; PHP's default
+  2 s `file_update_protection` is kept so a stored `.bin` always predates a
+  rewrite of the same second. `/internal/eval.php` is listed in
+  `opcache.blacklist_filename`, written by the loader before the first request.
+- Experimental activation on PHP <= 8.4: `"opcache": false` in
+  `playground.config.json` (default) and `?opcache=1|0` in the URL, forwarded
+  shell → remote → worker. When on, the loader calls `php.setSapiName("uwsgi")`
+  before the first request. php-wasm itself ignores the name; PHP compares it
+  against its whitelist and `php_sapi_name()` reports it.
+- SAPI audit of the shipped bundle (2026.51, `Core/` + `vendor/`), every
+  `php_sapi_name()`/`PHP_SAPI` check:
+
+  | File:line | Branch | Under `uwsgi` |
+  | --- | --- | --- |
+  | `Core/Kernel.php:395` | `PHP_SAPI === 'cli'` | false, as under `wasm` |
+  | `Core/CrashReport.php:158` | `php_sapi_name() === 'cli'` | false, as under `wasm` |
+  | `Core/Translation/updater.php:19` | `php_sapi_name() !== "cli"` (exit) | true, as under `wasm` |
+  | `Core/Controller/Cron.php:108,316,349` | `PHP_SAPI === 'cli'` / `!= 'cli'` | unchanged |
+  | `vendor/autoload.php:11` | `PHP_SAPI === 'cli' \|\| PHP_SAPI === 'phpdbg'` | false, as under `wasm` |
+  | `vendor/phpmailer/phpmailer/src/PHPMailer.php:850` | `strpos(PHP_SAPI, 'cli') !== false` | false (`html` debug output), as under `wasm`; `cli-server` would flip it |
+  | `vendor/twig/twig/src/Extension/DebugExtension.php:28` | `'cli' === \PHP_SAPI` | false, as under `wasm` |
+
+  `uwsgi`, `cgi`, `fpm` and `apache` never appear as literals. A `cgi*` name was
+  rejected because PHP's CGI SAPIs emit a `Status:` header instead of the HTTP
+  status line.
+- The cross-session OPcache journal (`facturascripts-opcache:<php>:<core sha>`,
+  "OPcache isolation across core versions" below) is removed, mirroring
+  nextcloud-playground#105. The bundle extractor gives every file the boot's
+  `mtime`, so with timestamp validation no restored `.bin` ever validated: the
+  store had no cross-session benefit and, once the cache is live, every
+  debounced flush rewrote thousands of `.bin` files (Nextcloud Playground
+  measured +10 s per clean boot). `initFsPersistence()` journals `/persist`
+  only; `dropLegacyOpcacheJournals()` deletes the retired stores on every boot
+  (the two names the current runtime could have used explicitly, every
+  `facturascripts-opcache:*` name where `indexedDB.databases()` exists),
+  fire-and-forget so a tab still holding a store open cannot block boot.
+  Reloads recompile from scratch, which is the ephemeral model this playground
+  follows.
+
+**Files:** `src/runtime/php-loader.js`, `src/runtime/fs-persistence.js`,
+`src/shared/config.js`, `src/shared/paths.js`, `src/shell/main.js`,
+`src/remote/main.js`, `php-worker.js`, `playground.config.json`,
+`tests/php-loader-opcache.test.mjs`, `tests/opcache-flag.test.mjs`,
+`tests/fs-persistence.test.mjs`, `docs/development.md`, `README.md`, `AGENTS.md`
+
+---
+
 ## Service Worker asset cache policy and crash toolbar unlock
 
 **Date:** 2026-10-16

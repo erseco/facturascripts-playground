@@ -31,6 +31,19 @@ export function getDefaultRuntime(config) {
   );
 }
 
+/**
+ * Decide whether the PHP worker reports a whitelisted SAPI name so OPcache's
+ * file cache starts on PHP <= 8.4 (experimental; see php-loader.js
+ * OPCACHE_SAPI_NAME). `?opcache=1|0` overrides playground.config.json's
+ * `opcache` key (default off). PHP 8.5 runs the cache regardless.
+ */
+export function isOpcacheEnabled(param, config = {}) {
+  if (param !== null && param !== undefined && param !== "") {
+    return !["0", "false", "off", "no"].includes(String(param).toLowerCase());
+  }
+  return config.opcache === true;
+}
+
 import {
   buildEffectivePlaygroundConfig as _buildEffectivePlaygroundConfig,
   normalizeBlueprint as _normalizeBlueprint,

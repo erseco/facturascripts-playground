@@ -38,6 +38,7 @@ export function resolveRemoteUrl(
   runtimeId,
   path = "/",
   coreVersion = "",
+  opcache = null,
 ) {
   const url = new URL("./remote.html", window.location.href);
   url.searchParams.set("scope", scopeId);
@@ -45,6 +46,9 @@ export function resolveRemoteUrl(
   url.searchParams.set("path", path);
   if (coreVersion) {
     url.searchParams.set("core", coreVersion);
+  }
+  if (opcache) {
+    url.searchParams.set("opcache", opcache);
   }
   return url;
 }

@@ -101,6 +101,9 @@ Campos relevantes:
 - `timezone`: zona horaria por defecto.
 - `autologin`: inicia sesion automaticamente con el usuario admin.
 - `resetOnVersionMismatch`: limpia el estado persistido si cambia el bundle.
+- `opcache`: experimental, por defecto `false`. Activa la cache de bytecode de
+  OPcache en PHP 8.1-8.4 (`?opcache=1` en la URL la activa y `?opcache=0` la
+  desactiva para una sesion). Ver [OPcache](docs/development.md#opcache-cache-de-bytecode-php).
 - `admin.username`, `admin.password`, `admin.email`: usuario inicial.
 - `runtimes[]`: runtimes PHP disponibles para la UI.
 
