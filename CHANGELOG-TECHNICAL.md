@@ -6,6 +6,33 @@ are the way they are and avoid re-investigating solved problems.
 
 ---
 
+## Journal flush before the OPcache restart
+
+**Date:** 2026-10-17
+**Context:** Ported from ateeducacion/nextcloud-playground#107. The `/persist`
+journal flush is debounced (1.5 s). `flushNow()` only looked at `pendingOps`,
+so when a debounced flush had already drained them and was still inside its
+IndexedDB transaction it returned at once; a caller that then tore the worker
+down aborted that transaction and lost the batch. The info panel's OPcache
+toggle (#165) restarted the runtime iframe without flushing at all.
+
+### Decision
+
+- `flushNow()` awaits the in-flight flush (`flushQueue`) before checking
+  `pendingOps`.
+- The OPcache-only "Apply & Reload" path asks the worker to flush first: the
+  shell posts `flush-persistence` to the runtime host, which forwards it to the
+  worker; the worker calls the runtime's `flushPersistence()` and answers
+  `persistence-flushed` ("Persistence journal flushed." in the Logs tab). The
+  shell waits up to 60 s, then restarts anyway and logs it.
+- Out of scope: F5 and the restart button still reload without flushing.
+
+**Files:** `src/runtime/fs-persistence.js`, `php-worker.js`,
+`src/remote/main.js`, `src/shell/main.js`, `tests/fs-persistence.test.mjs`,
+`tests/e2e/shell.spec.mjs`, `docs/development.md`
+
+---
+
 ## OPcache file cache validation and experimental activation
 
 **Date:** 2026-10-17

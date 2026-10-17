@@ -260,6 +260,12 @@ test("enables experimental OPcache from the info panel and restarts PHP with the
   await page.locator("#info-opcache").check();
   await page.locator("#config-apply").click();
 
+  // The journal is flushed before the runtime restarts, so the debounced batch
+  // is not lost with the old worker.
+  await expect(page.locator("#log-panel")).toContainText(
+    "Persistence journal flushed",
+  );
+
   // Same scope, no clean boot, URL carries the flag for manual reloads.
   await expect(page).toHaveURL(/[?&]opcache=1/);
   await expect(frame).toHaveAttribute("src", /opcache=1/);
