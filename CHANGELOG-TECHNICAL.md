@@ -60,12 +60,22 @@ snippet shared the single cache entry of `/internal/eval.php`.
   fire-and-forget so a tab still holding a store open cannot block boot.
   Reloads recompile from scratch, which is the ephemeral model this playground
   follows.
+- Info panel toggle (erseco/facturascripts-playground#164): the "OPcache file
+  cache" checkbox under Configuration writes `?opcache=` into the shell URL
+  (`opcacheUrlParam()` emits `1`/`0` only when the choice differs from the
+  config default, `history.replaceState`) and reloads the runtime iframe with
+  the same scope, so a new worker starts with the new SAPI name and `/persist`
+  is kept. Only that change shows "Apply & Reload" plus a reload note; combined
+  with a PHP or core version change the destructive "Apply & Reset" flow wins.
+  A boot-time banner was rejected: the playground has no durable "dismissed"
+  state, so it would nag on every boot.
 
 **Files:** `src/runtime/php-loader.js`, `src/runtime/fs-persistence.js`,
 `src/shared/config.js`, `src/shared/paths.js`, `src/shell/main.js`,
-`src/remote/main.js`, `php-worker.js`, `playground.config.json`,
-`tests/php-loader-opcache.test.mjs`, `tests/opcache-flag.test.mjs`,
-`tests/fs-persistence.test.mjs`, `docs/development.md`, `README.md`, `AGENTS.md`
+`src/remote/main.js`, `php-worker.js`, `playground.config.json`, `index.html`,
+`src/styles/app.css`, `tests/php-loader-opcache.test.mjs`,
+`tests/opcache-flag.test.mjs`, `tests/fs-persistence.test.mjs`,
+`tests/e2e/shell.spec.mjs`, `docs/development.md`, `README.md`, `AGENTS.md`
 
 ---
 

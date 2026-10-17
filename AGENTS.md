@@ -50,7 +50,8 @@ extraction aligned. Generated output is under `assets/facturascripts/`,
   OPcache bytecode (`/internal/shared/opcache`) is not persisted: the bundle is
   re-extracted with fresh mtimes every boot, so a journaled cache never validated.
   Boots delete the retired `facturascripts-opcache:*` stores. OPcache itself is
-  inert under the `wasm` SAPI unless `?opcache=1` is used; see
+  inert under the `wasm` SAPI unless `?opcache=1` (or the Info panel's OPcache
+  checkbox, which reloads only the runtime iframe) is used; see
   [docs/development.md](docs/development.md#opcache-cache-de-bytecode-php).
 - First deploy uses `Plugins::deploy(true, true)` to populate controller/page data;
   otherwise `users.homepage` foreign keys can fail. Wizard defaults and company/

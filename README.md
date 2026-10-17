@@ -103,7 +103,9 @@ Campos relevantes:
 - `resetOnVersionMismatch`: limpia el estado persistido si cambia el bundle.
 - `opcache`: experimental, por defecto `false`. Activa la cache de bytecode de
   OPcache en PHP 8.1-8.4 (`?opcache=1` en la URL la activa y `?opcache=0` la
-  desactiva para una sesion). Ver [OPcache](docs/development.md#opcache-cache-de-bytecode-php).
+  desactiva para una sesion; la casilla «OPcache file cache» del panel Info hace
+  lo mismo y reinicia PHP sin perder datos). Ver
+  [OPcache](docs/development.md#opcache-cache-de-bytecode-php).
 - `admin.username`, `admin.password`, `admin.email`: usuario inicial.
 - `runtimes[]`: runtimes PHP disponibles para la UI.
 

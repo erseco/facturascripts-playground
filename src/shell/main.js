@@ -7,7 +7,12 @@ import {
   parseImportedBlueprintPayload,
   resolveBlueprintForShell,
 } from "../shared/blueprint.js";
-import { getDefaultRuntime, loadPlaygroundConfig } from "../shared/config.js";
+import {
+  getDefaultRuntime,
+  isOpcacheEnabled,
+  loadPlaygroundConfig,
+  opcacheUrlParam,
+} from "../shared/config.js";
 import { loadCoreVersions } from "../shared/core-versions.js";
 import {
   captureException,
@@ -64,8 +69,10 @@ const els = {
   reset: document.querySelector("#reset-button"),
   infoPhpVersion: document.querySelector("#info-php-version"),
   infoCoreVersion: document.querySelector("#info-core-version"),
+  infoOpcache: document.querySelector("#info-opcache"),
   configStatus: document.querySelector("#config-status"),
   configWarning: document.querySelector("#config-warning"),
+  configReloadNote: document.querySelector("#config-reload-note"),
   configApply: document.querySelector("#config-apply"),
   runtimeIdChip: document.querySelector("#runtime-id-chip"),
   runtimeIdValue: document.querySelector("#runtime-id-value"),
@@ -606,19 +613,33 @@ function populateConfigSelects() {
     }
   }
   els.infoCoreVersion.value = currentCoreVersion;
+  if (els.infoOpcache) {
+    els.infoOpcache.checked = currentOpcacheEnabled();
+  }
+}
+
+function currentOpcacheEnabled() {
+  return isOpcacheEnabled(currentOpcacheParam, config);
 }
 
 // Reflect the applied runtime in the Info panel: when the selected PHP version
 // differs from what is actually running the config is "dirty". Switching the
 // runtime is destructive (it resets the site), so the Apply button stays inert
-// and the warning stays hidden until the selection actually differs.
+// and the warning stays hidden until the selection actually differs. The
+// OPcache toggle alone only restarts PHP and keeps the data, so it shows the
+// reload note instead of the warning.
 function refreshDirtyState() {
   if (!els.infoPhpVersion) {
     return;
   }
-  const dirty =
+  const versionDirty =
     els.infoPhpVersion.value !== currentRuntimeId ||
     els.infoCoreVersion.value !== currentCoreVersion;
+  const opcacheDirty =
+    Boolean(els.infoOpcache) &&
+    els.infoOpcache.checked !== currentOpcacheEnabled();
+  const dirty = versionDirty || opcacheDirty;
+  const reloadOnly = opcacheDirty && !versionDirty;
 
   if (els.configStatus) {
     els.configStatus.className = dirty ? "dirty-note" : "status-pill";
@@ -629,8 +650,15 @@ function refreshDirtyState() {
   // Switching the runtime is destructive; the Apply button and warning only
   // appear once the selection differs from what is running. To revert, reselect
   // the original version — the dirty state clears itself.
-  els.configWarning?.classList.toggle("is-hidden", !dirty);
-  els.configApply?.classList.toggle("is-hidden", !dirty);
+  els.configWarning?.classList.toggle("is-hidden", !versionDirty);
+  els.configReloadNote?.classList.toggle("is-hidden", !reloadOnly);
+  if (els.configApply) {
+    els.configApply.classList.toggle("is-hidden", !dirty);
+    els.configApply.classList.toggle("danger", !reloadOnly);
+    els.configApply.textContent = reloadOnly
+      ? "Apply & Reload"
+      : "Apply & Reset";
+  }
 }
 
 function updateConfigState() {
@@ -643,23 +671,40 @@ function updateConfigState() {
 function applyConfigAndReset() {
   const newRuntimeId = els.infoPhpVersion?.value;
   const newCoreVersion = els.infoCoreVersion?.value || "";
+  const newOpcache = els.infoOpcache
+    ? els.infoOpcache.checked
+    : currentOpcacheEnabled();
+  const opcacheChanged = newOpcache !== currentOpcacheEnabled();
+  const runtimeChanged = newRuntimeId !== currentRuntimeId;
+  const coreChanged = newCoreVersion !== currentCoreVersion;
 
-  if (
-    newRuntimeId === currentRuntimeId &&
-    newCoreVersion === currentCoreVersion
-  ) {
+  if (!runtimeChanged && !coreChanged && !opcacheChanged) {
     return;
   }
 
-  const coreChanged = newCoreVersion !== currentCoreVersion;
+  const url = new URL(window.location.href);
+  if (opcacheChanged) {
+    // The worker reads ?opcache= once at startup (see php-loader.js); keep the
+    // shell URL in sync so a manual reload preserves the choice.
+    currentOpcacheParam = opcacheUrlParam(newOpcache, config);
+    if (currentOpcacheParam) {
+      url.searchParams.set("opcache", currentOpcacheParam);
+    } else {
+      url.searchParams.delete("opcache");
+    }
+    appendLog(
+      `Experimental OPcache ${newOpcache ? "enabled" : "disabled"}; restarting PHP`,
+    );
+  }
   currentRuntimeId = newRuntimeId;
   currentCoreVersion = newCoreVersion;
   remoteFrameBooted = false;
-  appendLog(`Switching runtime to ${currentRuntimeId}`);
+  if (runtimeChanged || coreChanged) {
+    appendLog(`Switching runtime to ${currentRuntimeId}`);
+  }
   updateConfigState();
   saveState({ switchedAt: new Date().toISOString() });
   if (coreChanged) {
-    const url = new URL(window.location.href);
     if (currentCoreVersion) {
       url.searchParams.set("version", currentCoreVersion);
     } else {
@@ -668,8 +713,10 @@ function applyConfigAndReset() {
     window.location.href = url.toString();
     return;
   }
+  window.history.replaceState(window.history.state, "", url);
   serviceWorkerReady = null;
-  pendingCleanBoot = true;
+  // Only a runtime switch resets the site; toggling OPcache keeps /persist.
+  pendingCleanBoot = runtimeChanged;
   setPhpInfoContent("");
   void updateFrame();
 }
@@ -758,6 +805,9 @@ async function main() {
   }
   if (els.infoCoreVersion) {
     els.infoCoreVersion.addEventListener("change", refreshDirtyState);
+  }
+  if (els.infoOpcache) {
+    els.infoOpcache.addEventListener("change", refreshDirtyState);
   }
   if (els.configApply) {
     els.configApply.addEventListener("click", applyConfigAndReset);
