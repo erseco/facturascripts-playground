@@ -36,3 +36,27 @@ export function createServiceWorkerUnsupportedError() {
 export function isServiceWorkerUnsupportedError(error) {
   return error?.name === SERVICE_WORKER_UNSUPPORTED_ERROR_NAME;
 }
+
+// Firefox before 147 (ESR 128/140 included) cannot run module Service Workers:
+// sw.js's `import` lines made registration fail with "threw an exception during
+// script evaluation". The build bundles sw.js into this classic script at the
+// site root (a Service Worker's maximum scope is its own directory).
+export const SERVICE_WORKER_SCRIPT = "sw.bundle.js";
+
+/** Register the runtime Service Worker as a classic script for scope "./". */
+export async function registerClassicServiceWorker(swUrl) {
+  if (!isServiceWorkerSupported()) {
+    throw createServiceWorkerUnsupportedError();
+  }
+
+  const registration = await navigator.serviceWorker.register(swUrl, {
+    scope: "./",
+    updateViaCache: "none",
+  });
+  try {
+    await registration?.update();
+  } catch {
+    // Offline or a transient fetch error: the installed worker keeps serving.
+  }
+  return registration;
+}

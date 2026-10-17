@@ -4,6 +4,8 @@ import {
   createServiceWorkerUnsupportedError,
   isServiceWorkerSupported,
   isServiceWorkerUnsupportedError,
+  registerClassicServiceWorker,
+  SERVICE_WORKER_SCRIPT,
   SERVICE_WORKER_UNSUPPORTED_ERROR_NAME,
   SERVICE_WORKER_UNSUPPORTED_MESSAGE,
 } from "../src/shared/service-worker-support.js";
@@ -77,5 +79,59 @@ describe("createServiceWorkerUnsupportedError", () => {
     );
     assert.equal(isServiceWorkerUnsupportedError(undefined), false);
     assert.equal(isServiceWorkerUnsupportedError("Rejected"), false);
+  });
+});
+
+describe("registerClassicServiceWorker", () => {
+  function fakeContainer(registration) {
+    const calls = [];
+    return {
+      calls,
+      register(url, options) {
+        calls.push({ url, options });
+        return Promise.resolve(registration);
+      },
+    };
+  }
+
+  // Sentry 151476400: Firefox < 147 (ESR 128/140) cannot run module Service
+  // Workers, so sw.js "threw an exception during script evaluation".
+  it("registers the classic sw.bundle.js, not a module worker", async () => {
+    const container = fakeContainer({ update: async () => {} });
+    setNavigator({ serviceWorker: container });
+    await registerClassicServiceWorker(
+      new URL(`https://example.test/${SERVICE_WORKER_SCRIPT}`),
+    );
+    assert.equal(SERVICE_WORKER_SCRIPT, "sw.bundle.js");
+    assert.equal(container.calls.length, 1);
+    assert.notEqual(container.calls[0].options.type, "module");
+    assert.equal(container.calls[0].options.scope, "./");
+  });
+
+  // Sentry 151132281: update() failing (offline) or a registration without
+  // update() must not abort the boot; the installed worker keeps serving.
+  it("tolerates a failing update() and a missing registration", async () => {
+    setNavigator({
+      serviceWorker: fakeContainer({
+        update: () => Promise.reject(new TypeError("Failed to update")),
+      }),
+    });
+    await registerClassicServiceWorker(
+      new URL("https://example.test/sw.bundle.js"),
+    );
+    setNavigator({ serviceWorker: fakeContainer(undefined) });
+    await registerClassicServiceWorker(
+      new URL("https://example.test/sw.bundle.js"),
+    );
+  });
+
+  it("throws the unsupported error without the API", async () => {
+    setNavigator({});
+    await assert.rejects(
+      registerClassicServiceWorker(
+        new URL("https://example.test/sw.bundle.js"),
+      ),
+      (error) => isServiceWorkerUnsupportedError(error),
+    );
   });
 });

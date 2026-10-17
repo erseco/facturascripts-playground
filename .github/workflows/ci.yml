@@ -33,11 +33,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Bundling resolves every import reachable from php-worker.js, which unit
-      # tests (importing sources directly) cannot. sw.js and the shell/remote
-      # entry points are served unbundled, so they keep a syntax check.
-      - name: Build worker bundle
-        run: npm run build-worker
+      # Bundling resolves every import reachable from php-worker.js and sw.js
+      # (built into the classic sw.bundle.js), which unit tests (importing
+      # sources directly) cannot. sw.js inlines the generated Build ID, so it is
+      # written first. The shell/remote entry points are served unbundled, so
+      # they keep a syntax check.
+      - name: Build worker bundles
+        run: |
+          npm run build:version
+          npm run build-worker
 
       - name: Syntax check unbundled entry points
         run: |
