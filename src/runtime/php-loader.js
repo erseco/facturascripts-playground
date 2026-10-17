@@ -91,6 +91,17 @@ function writeOpcacheBlacklist(php, FS) {
   php.writeFile(OPCACHE_BLACKLIST_PATH, OPCACHE_BLACKLIST);
 }
 
+// Experimental OPcache activation (`?opcache=1` / playground.config.json
+// "opcache", default off). php-src <= 8.4 only starts OPcache for whitelisted
+// SAPI names; `uwsgi` is on that list and nothing shipped in the FacturaScripts
+// bundle branches on it: every php_sapi_name()/PHP_SAPI check in Core/ and
+// vendor/ compares against `cli` (audit in CHANGELOG-TECHNICAL.md, "OPcache
+// file cache validation and experimental activation"). Reported to PHP as
+// php_sapi_name(); php-wasm itself ignores the value. Ported from
+// moodle-playground ADR-0039:
+// https://github.com/ateeducacion/moodle-playground/blob/main/docs/architecture/adr/ADR-0039-experimental-opcache-via-sapi-name.md
+export const OPCACHE_SAPI_NAME = "uwsgi";
+
 export const __testing = { PHP_INI_ENTRIES, writeOpcacheBlacklist };
 
 export function createPhpRuntime(
@@ -104,6 +115,7 @@ export function createPhpRuntime(
     forceCleanBoot,
     corsProxyUrl,
     phpCorsProxyUrl,
+    opcache = false,
   } = {},
 ) {
   const resolvedPhpVersion = phpVersion || DEFAULT_PHP_VERSION;
@@ -123,6 +135,11 @@ export function createPhpRuntime(
         tcpOverFetch,
       });
       const php = new PHP(runtimeId);
+      if (opcache) {
+        // Must precede the first request: PHP reads the SAPI name once at
+        // startup. php-wasm re-applies it on runtime hot-swap.
+        await php.setSapiName(OPCACHE_SAPI_NAME);
+      }
       const FS = php[__private__dont__use].FS;
       persistenceController = null;
 

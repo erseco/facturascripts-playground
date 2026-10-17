@@ -227,6 +227,7 @@ async function bootstrapRemote() {
   const coreVersion = url.searchParams.get("core") || "";
   const requestedPath = url.searchParams.get("path") || "/";
   forceCleanBoot = url.searchParams.get("clean") === "1";
+  const opcacheParam = url.searchParams.get("opcache") || null;
   _activeScopeId = scopeId;
   _activeRuntimeId = requestedRuntimeId;
   activePath = requestedPath;
@@ -276,6 +277,9 @@ async function bootstrapRemote() {
     workerUrl.searchParams.set("scope", scopeId);
     workerUrl.searchParams.set("runtime", runtime.id);
     workerUrl.searchParams.set("core", coreVersion);
+    if (opcacheParam) {
+      workerUrl.searchParams.set("opcache", opcacheParam);
+    }
     phpWorker = new Worker(workerUrl, { type: "module" });
     phpWorker.addEventListener("error", (event) => {
       const detail =

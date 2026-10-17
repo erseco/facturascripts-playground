@@ -93,6 +93,7 @@ const blueprintEditor = initBlueprintEditor(
 
 let currentRuntimeId;
 let currentCoreVersion = "";
+let currentOpcacheParam = null;
 let supportedCoreVersions = { defaultVersion: "", versions: [] };
 let currentPath = "/";
 // In-shell navigation history for the toolbar Back button. The iframe's own
@@ -274,6 +275,7 @@ async function updateFrame() {
     currentRuntimeId,
     currentPath,
     currentCoreVersion,
+    currentOpcacheParam,
   );
   if (pendingCleanBoot) {
     url.searchParams.set("clean", "1");
@@ -696,6 +698,10 @@ async function main() {
   const requestedCoreVersion = new URL(window.location.href).searchParams.get(
     "version",
   );
+  // Experimental OPcache switch (see php-loader.js OPCACHE_SAPI_NAME); the
+  // worker decides between this parameter and playground.config.json.
+  currentOpcacheParam =
+    new URL(window.location.href).searchParams.get("opcache") || null;
   const supportedVersionIds = new Set(
     supportedCoreVersions.versions.map((entry) => entry.version),
   );

@@ -1,4 +1,7 @@
-import { loadPlaygroundConfig } from "./src/shared/config.js";
+import {
+  isOpcacheEnabled,
+  loadPlaygroundConfig,
+} from "./src/shared/config.js";
 import {
   createPhpBridgeChannel,
   createShellChannel,
@@ -23,6 +26,7 @@ const workerUrl = new URL(self.location.href);
 const scopeId = workerUrl.searchParams.get("scope");
 const runtimeId = workerUrl.searchParams.get("runtime");
 const coreVersion = workerUrl.searchParams.get("core") || "";
+const opcacheParam = workerUrl.searchParams.get("opcache") || null;
 
 let bridgeChannel = null;
 let runtimeStatePromise = null;
@@ -162,6 +166,7 @@ async function getRuntimeState() {
       scopeId,
       forceCleanBoot,
       phpCorsProxyUrl: config.phpCorsProxyUrl || null,
+      opcache: isOpcacheEnabled(opcacheParam, config),
     });
 
     // Parallel boot: start downloading the readonly-core manifest + bundle now
