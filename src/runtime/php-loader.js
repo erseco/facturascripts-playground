@@ -37,6 +37,62 @@ async function getTcpOverFetchOptions(corsProxyUrl) {
   };
 }
 
+// Scripts OPcache must never cache. php.run({ code }) writes every snippet to
+// the same /internal/eval.php, so a stored .bin would be served for a later,
+// different snippet. The blacklist is honoured on store in file-cache-only mode.
+// Ported from moodle-playground ADR-0038:
+// https://github.com/ateeducacion/moodle-playground/blob/main/docs/architecture/adr/ADR-0038-opcache-file-cache-timestamp-validation.md
+const OPCACHE_BLACKLIST_PATH = "/internal/shared/opcache-blacklist.txt";
+const OPCACHE_BLACKLIST = "/internal/eval.php\n";
+
+const PHP_INI_ENTRIES = {
+  memory_limit: "256M",
+  max_execution_time: "0",
+  display_errors: "On",
+  error_reporting: "E_ALL",
+  "session.save_path": "/persist/mutable/session",
+  upload_tmp_dir: "/tmp",
+  default_socket_timeout: "1",
+  "date.timezone": "UTC",
+  "openssl.cafile": TCP_OVER_FETCH_CA_PATH,
+  "curl.cainfo": TCP_OVER_FETCH_CA_PATH,
+  // OPcache tuning — compiled bytecode is kept in /internal/shared/opcache
+  // (file cache only; fs-persistence journals it per PHP version + core SHA).
+  // Timestamps ARE validated: PHP <= 8.4 never starts OPcache under the `wasm`
+  // SAPI (see OPCACHE_SAPI_NAME), but PHP 8.5 dropped the SAPI whitelist and
+  // runs this cache for real, and PHP files do change within a session
+  // (Plugins::deploy rewrites Dinamic/, plugin installs). In file-cache-only
+  // mode opcache_reset() and opcache_invalidate() are no-ops, so the mtime
+  // check (whole seconds, with PHP's default 2 s file_update_protection) is
+  // the only invalidation. max_accelerated_files / memory_consumption /
+  // interned_strings_buffer are inert without a shared memory segment and are
+  // kept for the day one becomes available.
+  "opcache.enable": "1",
+  "opcache.jit": "0",
+  "opcache.file_cache": "/internal/shared/opcache",
+  "opcache.file_cache_only": "1",
+  "opcache.max_accelerated_files": "10000",
+  "opcache.memory_consumption": "96",
+  "opcache.interned_strings_buffer": "16",
+  "opcache.validate_timestamps": "1",
+  "opcache.revalidate_freq": "0",
+  "opcache.blacklist_filename": OPCACHE_BLACKLIST_PATH,
+  "opcache.file_cache_consistency_checks": "0",
+};
+
+// PHP reads opcache.blacklist_filename at startup, so the file has to exist
+// before the first request.
+function writeOpcacheBlacklist(php, FS) {
+  try {
+    FS.mkdirTree("/internal/shared");
+  } catch {
+    /* exists */
+  }
+  php.writeFile(OPCACHE_BLACKLIST_PATH, OPCACHE_BLACKLIST);
+}
+
+export const __testing = { PHP_INI_ENTRIES, writeOpcacheBlacklist };
+
 export function createPhpRuntime(
   _runtime,
   {
@@ -110,31 +166,8 @@ export function createPhpRuntime(
       // is written by bootstrap.js with the playground prepend (Forja cache,
       // $_SERVER vars, etc.). Do NOT empty it here.
 
-      await setPhpIniEntries(php, {
-        memory_limit: "256M",
-        max_execution_time: "0",
-        display_errors: "On",
-        error_reporting: "E_ALL",
-        "session.save_path": "/persist/mutable/session",
-        upload_tmp_dir: "/tmp",
-        default_socket_timeout: "1",
-        "date.timezone": "UTC",
-        "openssl.cafile": TCP_OVER_FETCH_CA_PATH,
-        "curl.cainfo": TCP_OVER_FETCH_CA_PATH,
-        // OPcache tuning — defaults cap at 1000 files and use file_cache_only
-        // which reads bytecode from MEMFS on every request.  Switch to the
-        // in-memory cache with a higher file limit and no timestamp checks
-        // (the readonly bundle never changes within a session).
-        "opcache.enable": "1",
-        "opcache.jit": "0",
-        "opcache.file_cache": "/internal/shared/opcache",
-        "opcache.file_cache_only": "1",
-        "opcache.max_accelerated_files": "10000",
-        "opcache.memory_consumption": "96",
-        "opcache.interned_strings_buffer": "16",
-        "opcache.validate_timestamps": "0",
-        "opcache.file_cache_consistency_checks": "0",
-      });
+      writeOpcacheBlacklist(php, FS);
+      await setPhpIniEntries(php, PHP_INI_ENTRIES);
 
       try {
         FS.mkdirTree("/internal/shared/preload");
