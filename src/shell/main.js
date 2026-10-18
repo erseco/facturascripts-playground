@@ -115,6 +115,7 @@ let suppressBackPush = false;
 // first iframe load that follows is the landing redirect, not a user navigation.
 let pendingBootFrameLoad = true;
 let channel;
+let instanceId;
 let serviceWorkerReady = null;
 let activeBlueprint;
 let remoteFrameBooted = false;
@@ -283,6 +284,10 @@ async function updateFrame() {
     currentCoreVersion,
     currentOpcacheParam,
   );
+  instanceId = globalThis.crypto.randomUUID();
+  url.searchParams.set("instance", instanceId);
+  channel?.close();
+  bindShellChannel();
   if (pendingCleanBoot) {
     url.searchParams.set("clean", "1");
   }
@@ -499,7 +504,7 @@ async function importPayload(file) {
 }
 
 function bindShellChannel() {
-  channel = new BroadcastChannel(createShellChannel(scopeId));
+  channel = new BroadcastChannel(createShellChannel(scopeId, instanceId));
   channel.addEventListener("message", (event) => {
     const message = event.data;
 
@@ -880,7 +885,6 @@ async function main() {
     });
   }
 
-  bindShellChannel();
   bindServiceWorkerMessages();
   setPhpInfoContent("");
   setUiLocked(true);

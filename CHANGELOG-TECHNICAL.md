@@ -361,3 +361,18 @@ The "Forja HTTP timeouts" fix above documents pre-populating the Forja cache **b
 `buildPhpPrepend()` now re-seeds `forja_builds.cache` and `forja_plugins.cache` with `serialize([])` (`a:0:{}`) in `MyFiles/Tmp/FileCache` before every request. `Cache::get()` returns `[]` immediately, so `Forja::builds()` never calls curl, `canUpdateCore()` stays `false`, and there is no malformed response to crash on. Running in the prepend means it survives `Cache::clear()` and the 3600s expiry. The playground cannot update its readonly core anyway, so an empty builds/plugin list is the correct offline behaviour.
 
 **Files:** `src/runtime/bootstrap.js`, `tests/bootstrap-prepend.test.mjs`
+
+## Exclusive scope ownership
+
+Each scope has one active remote host, enforced by a native Web Lock before any
+worker starts or persisted state is cleared. A duplicated tab or explicit
+`?scope=` opened twice reports an ownership conflict; close the original owner
+and explicitly reload the other tab, or use a fresh scope. Different scopes
+remain independent. Web Locks are required; a missing or denied API fails closed.
+
+`pagehide` terminates PHP before releasing ownership; BFCache restores reload the
+remote host. Shell notifications are isolated by iframe generation, and HTTP
+listening starts only after worker configuration. The Service Worker, response
+UUIDs, persistence namespaces and safe crash-replay rules are unchanged. No POST
+is queued or replayed on handover. Deployments must close old tabs and refresh
+stale Service Worker caches because older code does not acquire the lock.
