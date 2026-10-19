@@ -35,8 +35,10 @@ name.
   unchanged: a URL value still wins and a config without the key means off.
 - `?opcache=0` and the Info panel checkbox (now checked by default, label no
   longer says "experimental") turn it off without resetting the scope.
-- Not measured separately on FacturaScripts or on a real low-memory device; no
-  browser OPcache canary exists in this repo yet.
+- Not measured separately on FacturaScripts or on a real low-memory device.
+- `tests/e2e/opcache-canary.spec.mjs` checks that a rewritten PHP file runs its
+  new code with the cache on and off. Blueprints have no `writeFile` step, so
+  the canary ships as a plugin ZIP served in place of the addon proxy.
 
 **Files:** `playground.config.json`, `index.html`, `src/shared/config.js`,
 `src/runtime/php-loader.js`, `src/shell/main.js`, `tests/e2e/shell.spec.mjs`,
