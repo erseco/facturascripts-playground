@@ -703,9 +703,7 @@ async function applyConfigAndReset() {
     } else {
       url.searchParams.delete("opcache");
     }
-    appendLog(
-      `Experimental OPcache ${newOpcache ? "enabled" : "disabled"}; restarting PHP`,
-    );
+    appendLog(`OPcache ${newOpcache ? "enabled" : "disabled"}; restarting PHP`);
   }
   if (!runtimeChanged && !coreChanged) {
     // Data survives this restart, so the debounced journal must land first.
@@ -790,7 +788,7 @@ async function main() {
   const requestedCoreVersion = new URL(window.location.href).searchParams.get(
     "version",
   );
-  // Experimental OPcache switch (see php-loader.js OPCACHE_SAPI_NAME); the
+  // OPcache switch (see php-loader.js OPCACHE_SAPI_NAME); the
   // worker decides between this parameter and playground.config.json.
   currentOpcacheParam =
     new URL(window.location.href).searchParams.get("opcache") || null;
