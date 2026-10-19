@@ -48,8 +48,14 @@ export function formatErrorDetail(error) {
  * becomes markup.
  */
 export function formatErrorHtml(error) {
-  const text = formatErrorDetail(error)
+  return `<!doctype html><meta charset="utf-8"><pre>${escapeHtml(formatErrorDetail(error))}</pre>`;
+}
+
+export function escapeHtml(value) {
+  return String(value)
     .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;");
-  return `<!doctype html><meta charset="utf-8"><pre>${text}</pre>`;
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
