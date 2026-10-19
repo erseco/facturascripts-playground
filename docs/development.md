@@ -178,15 +178,17 @@ Cuando cambies runtime, routing o almacenamiento, usa esa suite como primer filt
 reconstruye en cada sesion). Lo que hace realmente depende de la version de PHP:
 
 - **PHP 8.1-8.4**: OPcache no arranca bajo el nombre de SAPI `wasm` de php-wasm
-  (lista blanca de php-src), asi que la cache esta inerte salvo que se active
-  el modo experimental.
+  (lista blanca de php-src), asi que la cache esta inerte salvo que el worker
+  declare otro nombre de SAPI (ver abajo).
 - **PHP 8.5**: php-src elimino la lista blanca y la cache funciona siempre.
-- **Experimental**: `"opcache": true` en `playground.config.json`, o `?opcache=1`
-  en la URL (`?opcache=0` lo desactiva para esa sesion), hace que el worker
-  declare el SAPI `uwsgi` antes de la primera peticion y OPcache arranque tambien
-  en 8.1-8.4. Ningun `php_sapi_name()`/`PHP_SAPI` del nucleo ni de `vendor/`
-  distingue ese nombre (todos comparan con `cli`). Cuesta memoria WASM extra
-  (en Moodle Playground, +32..71 MiB). La casilla «OPcache file cache» del panel
+- **Activado por defecto**: `"opcache": true` en `playground.config.json` (o
+  `?opcache=1` en la URL; `?opcache=0` lo desactiva para esa sesion) hace que el
+  worker declare el SAPI `uwsgi` antes de la primera peticion y OPcache arranque
+  tambien en 8.1-8.4. Ningun `php_sapi_name()`/`PHP_SAPI` del nucleo ni de
+  `vendor/` distingue ese nombre (todos comparan con `cli`). En Moodle
+  Playground la navegacion fue 2-3,5 veces mas rapida en Chromium, Firefox y
+  WebKit, sin cambios en instalacion ni recarga y sin mas memoria pico del
+  navegador (ateeducacion/moodle-playground#353). La casilla «OPcache file cache» del panel
   Info escribe ese mismo parametro en la URL (`history.replaceState`) y recarga
   solo el iframe del runtime (nuevo worker, mismo scope): no es un reset, los
   datos de `/persist` se conservan. Antes de cambiar el iframe, el shell pide al

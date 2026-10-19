@@ -90,8 +90,9 @@ function writeOpcacheBlacklist(php, FS) {
   php.writeFile(OPCACHE_BLACKLIST_PATH, OPCACHE_BLACKLIST);
 }
 
-// Experimental OPcache activation (`?opcache=1` / playground.config.json
-// "opcache", default off). php-src <= 8.4 only starts OPcache for whitelisted
+// OPcache activation (`?opcache=1|0` / playground.config.json "opcache",
+// shipped as true since "OPcache file cache on by default" in
+// CHANGELOG-TECHNICAL.md). php-src <= 8.4 only starts OPcache for whitelisted
 // SAPI names; `uwsgi` is on that list and nothing shipped in the FacturaScripts
 // bundle branches on it: every php_sapi_name()/PHP_SAPI check in Core/ and
 // vendor/ compares against `cli` (audit in CHANGELOG-TECHNICAL.md, "OPcache

@@ -6,6 +6,44 @@ are the way they are and avoid re-investigating solved problems.
 
 ---
 
+## OPcache file cache on by default
+
+**Date:** 2026-10-19
+**Context:** Ported from moodle-playground ADR-0046
+(ateeducacion/moodle-playground#369). Closes the soak test in
+erseco/facturascripts-playground#164. "OPcache file cache validation and
+experimental activation" below kept the `uwsgi` SAPI switch behind
+`"opcache": false`. Moodle Playground's soak test
+(ateeducacion/moodle-playground#353, Playwright on the public site, 2026-10-19)
+measured, with the cache off → on:
+
+| | Chromium | Firefox | WebKit |
+| --- | --- | --- | --- |
+| Warm navigation (`/my/` visible) | 1036 → 466 ms | 2342 → 1102 ms | 801 → 401 ms |
+| Cold install | 46.6 → 44.3 s | 77.5 → 58.3 s | 45.1 → 49.9 s |
+| Same-tab reload | same | same | same |
+
+Peak RSS of the browser process tree over a 40-navigation session was ~400 MB
+lower with the cache (2009/2063 vs 2483/2439 MB), with no PHP memory errors,
+WASM traps or crash recoveries. The runtime, cache settings and SAPI switch are
+the same code here; the SAPI audit below found no FacturaScripts branch on the
+name.
+
+### Decision
+
+- `playground.config.json` ships `"opcache": true`. `isOpcacheEnabled()` is
+  unchanged: a URL value still wins and a config without the key means off.
+- `?opcache=0` and the Info panel checkbox (now checked by default, label no
+  longer says "experimental") turn it off without resetting the scope.
+- Not measured separately on FacturaScripts or on a real low-memory device; no
+  browser OPcache canary exists in this repo yet.
+
+**Files:** `playground.config.json`, `index.html`, `src/shared/config.js`,
+`src/runtime/php-loader.js`, `src/shell/main.js`, `tests/e2e/shell.spec.mjs`,
+`docs/development.md`, `README.md`, `AGENTS.md`
+
+---
+
 ## Service Worker skips cross-origin requests
 
 **Date:** 2026-10-19
