@@ -6,6 +6,28 @@ are the way they are and avoid re-investigating solved problems.
 
 ---
 
+## Service Worker skips cross-origin requests
+
+**Date:** 2026-10-19
+**Context:** Ported from moodle-playground ADR-0045
+(ateeducacion/moodle-playground#363, #364). Firefox never settles
+`event.respondWith(fetch(event.request))` in a Service Worker when the response
+is a cross-origin redirect: `https://raw.githubusercontent.com//owner/...`
+answers 307 with a relative `Location`. The PHP worker is a client of the SW, so
+blueprint downloads of such URLs hung forever (Firefox 155: 200 without the
+pass-through, hung through it; Chromium fine either way).
+
+### Decision
+
+- The fetch listener returns before `respondWith()` (and before buffering the
+  body) when `shouldInterceptRequest()` is false, i.e. for every cross-origin
+  request; the browser fetches them natively. The pass-through added nothing.
+
+**Files:** `sw.js`, `src/shared/service-worker-support.js`,
+`tests/service-worker-support.test.mjs`
+
+---
+
 ## Journal flush before the OPcache restart
 
 **Date:** 2026-10-17

@@ -60,3 +60,11 @@ export async function registerClassicServiceWorker(swUrl) {
   }
   return registration;
 }
+
+// Cross-origin requests go straight to the network: Firefox never settles a
+// respondWith(fetch(event.request)) pass-through whose response is a
+// cross-origin redirect, which hung blueprint downloads from the PHP worker.
+// See CHANGELOG-TECHNICAL.md "Service Worker skips cross-origin requests".
+export function shouldInterceptRequest(url, swOrigin) {
+  return url.origin === swOrigin;
+}
