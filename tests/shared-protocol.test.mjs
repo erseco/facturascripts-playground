@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { formatErrorDetail, formatErrorHtml } from "../src/shared/protocol.js";
+import {
+  escapeHtml,
+  formatErrorDetail,
+  formatErrorHtml,
+} from "../src/shared/protocol.js";
 
 test("formatErrorDetail keeps the error message when the stack omits it", () => {
   // Firefox and Safari: the stack has only frames, no "Name: message" line.
@@ -27,6 +31,14 @@ test("formatErrorHtml escapes the error text", () => {
   error.stack = "";
   assert.equal(
     formatErrorHtml(error),
-    '<!doctype html><meta charset="utf-8"><pre>Error: &lt;img src=x onerror="alert(1)"> &amp; more</pre>',
+    '<!doctype html><meta charset="utf-8"><pre>Error: &lt;img src=x onerror=&quot;alert(1)&quot;&gt; &amp; more</pre>',
   );
+});
+
+test("escapeHtml turns markup characters into text", () => {
+  assert.equal(
+    escapeHtml("<script>alert('x')</script> & \"q\""),
+    "&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt; &amp; &quot;q&quot;",
+  );
+  assert.equal(escapeHtml(503), "503");
 });
