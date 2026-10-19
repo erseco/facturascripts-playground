@@ -1,5 +1,5 @@
 import { BUILD_VERSION } from "./src/generated/build-version.js";
-import { createPhpBridgeChannel, createWorkerRequestId } from "./src/shared/protocol.js";
+import { createPhpBridgeChannel, createWorkerRequestId, formatErrorDetail } from "./src/shared/protocol.js";
 import { shouldInterceptRequest } from "./src/shared/service-worker-support.js";
 import { isCacheableAssetResponse, isStaticAssetPath } from "./src/shared/sw-asset-cache.js";
 
@@ -544,7 +544,7 @@ self.addEventListener("fetch", (event) => {
         serializedRequest: await buildForwardedRequest(event.request, forwardedUrl, bufferedBody),
         runtimeId,
         scopeId,
-      }).catch((error) => buildErrorResponse(String(error?.stack || error?.message || error)));
+      }).catch((error) => buildErrorResponse(formatErrorDetail(error)));
 
       if (isCacheableAssetResponse(requestPath, fresh)) {
         cache.put(url.toString(), fresh.clone()).catch(() => {});
@@ -557,7 +557,7 @@ self.addEventListener("fetch", (event) => {
       serializedRequest: await buildForwardedRequest(event.request, forwardedUrl, bufferedBody),
       runtimeId,
       scopeId,
-    }).catch((error) => buildErrorResponse(String(error?.stack || error?.message || error)));
+    }).catch((error) => buildErrorResponse(formatErrorDetail(error)));
 
     const locationScopedResponse = rewriteScopedLocation(response, {
       origin: url.origin,
