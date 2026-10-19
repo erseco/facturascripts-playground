@@ -6,6 +6,7 @@ import {
   createPhpBridgeChannel,
   createShellChannel,
   formatErrorDetail,
+  formatErrorHtml,
 } from "./src/shared/protocol.js";
 import {
   bootstrapFacturaScripts,
@@ -453,7 +454,7 @@ async function capturePhpInfo() {
     postShell({
       kind: "phpinfo",
       detail: `Failed to capture PHP info: ${formatErrorDetail(error)}`,
-      html: `<!doctype html><meta charset="utf-8"><pre>${formatErrorDetail(error)}</pre>`,
+      html: formatErrorHtml(error),
     });
   }
 }
