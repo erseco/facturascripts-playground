@@ -8,6 +8,7 @@ import {
   SERVICE_WORKER_SCRIPT,
   SERVICE_WORKER_UNSUPPORTED_ERROR_NAME,
   SERVICE_WORKER_UNSUPPORTED_MESSAGE,
+  shouldInterceptRequest,
 } from "../src/shared/service-worker-support.js";
 
 const originalNavigator = Object.getOwnPropertyDescriptor(
@@ -133,5 +134,31 @@ describe("registerClassicServiceWorker", () => {
       ),
       (error) => isServiceWorkerUnsupportedError(error),
     );
+  });
+});
+
+describe("shouldInterceptRequest", () => {
+  const origin = "https://erseco.github.io";
+
+  it("intercepts same-origin requests", () => {
+    assert.equal(
+      shouldInterceptRequest(
+        new URL(`${origin}/facturascripts-playground/playground/s/r/`),
+        origin,
+      ),
+      true,
+    );
+  });
+
+  // Firefox never settles a respondWith(fetch(event.request)) pass-through when
+  // the response is a cross-origin redirect (raw.githubusercontent.com answers
+  // `//owner/...` with a relative 307), which hung blueprint downloads.
+  it("leaves cross-origin requests to the browser", () => {
+    for (const url of [
+      "https://raw.githubusercontent.com//HenarLG/Playground_pruebas/refs/heads/main/local_accessibility.zip",
+      "https://github-proxy.exelearning.dev/?url=x",
+    ]) {
+      assert.equal(shouldInterceptRequest(new URL(url), origin), false, url);
+    }
   });
 });
