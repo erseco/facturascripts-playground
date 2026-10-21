@@ -19,7 +19,11 @@ import { join } from "node:path";
 import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import zlib from "node:zlib";
-import { isValidBuildVersion } from "../scripts/lib/build-version.mjs";
+import {
+  isValidBuildVersion,
+  renderBuildVersionModule,
+} from "../scripts/lib/build-version.mjs";
+import { writeBuildVersion } from "../scripts/write-build-version.mjs";
 
 const repoDir = fileURLToPath(new URL("..", import.meta.url));
 const script = (name) => join(repoDir, "scripts", name);
@@ -126,6 +130,79 @@ describe("build-tar-zst-bundle.mjs", () => {
     const result = run("build-tar-zst-bundle.mjs");
     assert.equal(result.status, 1);
     assert.match(result.stderr, /Usage: build-tar-zst-bundle\.mjs/);
+  });
+
+  it("refuses to run on a Node without native zstd", () => {
+    const noZstd = `data:text/javascript,${encodeURIComponent(
+      'import zlib from "node:zlib"; delete zlib.zstdCompressSync;',
+    )}`;
+    const result = spawnSync(
+      process.execPath,
+      ["--import", noZstd, script("build-tar-zst-bundle.mjs"), "a", "b"],
+      { cwd: repoDir, encoding: "utf8" },
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Node >= 22\.15 \(native node:zlib zstd\)/);
+  });
+});
+
+describe("write-build-version.mjs write mode", () => {
+  function write(env) {
+    const dir = makeTemp();
+    const logs = [];
+    const metadata = writeBuildVersion({
+      argv: ["node", "write-build-version.mjs"],
+      env,
+      repoDir: dir,
+      log: (line) => logs.push(line),
+    });
+    const json = JSON.parse(
+      readFileSync(join(dir, "assets/build-version.json"), "utf8"),
+    );
+    const module = readFileSync(
+      join(dir, "src/generated/build-version.js"),
+      "utf8",
+    );
+    return { metadata, json, module, logs };
+  }
+
+  it("writes the JSON metadata and the ES module for the overridden ID", () => {
+    const { metadata, json, module, logs } = write({
+      BUILD_VERSION: "20260101T000000Z-0123abcd-dirty",
+    });
+    assert.deepEqual(json, metadata);
+    assert.equal(json.buildVersion, "20260101T000000Z-0123abcd-dirty");
+    assert.equal(json.gitSha, "0123abcd");
+    assert.equal(json.dirty, true);
+    assert.equal(module, renderBuildVersionModule(metadata));
+    assert.match(
+      module,
+      /export const BUILD_VERSION = "20260101T000000Z-0123abcd-dirty";/,
+    );
+    assert.deepEqual(logs, [
+      "Wrote build metadata 20260101T000000Z-0123abcd-dirty",
+    ]);
+  });
+
+  it("falls back to the nogit SHA outside a git checkout", () => {
+    const { json } = write({});
+    assert.equal(json.gitSha, "nogit");
+    assert.equal(json.dirty, false);
+    assert.ok(isValidBuildVersion(json.buildVersion), json.buildVersion);
+    assert.ok(json.buildVersion.endsWith("-nogit"));
+  });
+
+  it("prints only the ID with --print-version and writes nothing", () => {
+    const dir = makeTemp();
+    let printed = "";
+    writeBuildVersion({
+      argv: ["node", "write-build-version.mjs", "--print-version"],
+      env: { BUILD_VERSION: "20260101T000000Z-0123abcd" },
+      repoDir: dir,
+      stdout: { write: (chunk) => (printed += chunk) },
+    });
+    assert.equal(printed, "20260101T000000Z-0123abcd\n");
+    assert.deepEqual(readdirSync(dir), []);
   });
 });
 
