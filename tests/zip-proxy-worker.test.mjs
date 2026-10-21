@@ -334,6 +334,81 @@ describe("zip-proxy worker: GitHub repo mode", () => {
       /latest release/u,
     );
   });
+
+  it("forwards Range on every archive mode and passes the 206 through", async () => {
+    const ranges = {};
+    const ranged =
+      (status = 206) =>
+      async (url, init) => {
+        ranges[new URL(url).pathname] = init.headers.get("Range");
+        return new Response("PK", {
+          status,
+          headers: { "Content-Range": "bytes 0-1/10" },
+        });
+      };
+    route(is("https://api.github.com/repos/o/r"), () =>
+      json({ default_branch: "trunk" }),
+    );
+    route(is("https://api.github.com/repos/o/r/pulls/7"), () =>
+      json({ head: { sha: "deadbeef" } }),
+    );
+    route(is("https://api.github.com/repos/o/r/releases/latest"), () =>
+      json({ tag_name: "v2" }),
+    );
+    route(is("https://api.github.com/repos/o/gone"), () => json({}, 404));
+    route(
+      is("https://github.com/o/gone/archive/refs/heads/main.zip"),
+      ranged(404),
+    );
+    route(startsWith("https://github.com/o/"), ranged());
+
+    for (const query of [
+      "o/r",
+      "o/r&branch=dev",
+      "o/r&commit=abc123",
+      "o/r&pr=7",
+      "o/r&release=v1",
+      "o/r&release=latest",
+      "o/gone",
+    ]) {
+      const response = await call(`?repo=${query}`, {
+        headers: { Range: "bytes=0-1" },
+      });
+      assert.equal(response.status, 206, query);
+      assert.equal(response.headers.get("Content-Range"), "bytes 0-1/10");
+    }
+    assert.deepEqual(ranges, {
+      "/o/r/archive/refs/heads/trunk.zip": "bytes=0-1",
+      "/o/r/archive/refs/heads/dev.zip": "bytes=0-1",
+      "/o/r/archive/abc123.zip": "bytes=0-1",
+      "/o/r/archive/deadbeef.zip": "bytes=0-1",
+      "/o/r/archive/refs/tags/v1.zip": "bytes=0-1",
+      "/o/r/archive/refs/tags/v2.zip": "bytes=0-1",
+      "/o/gone/archive/refs/heads/main.zip": "bytes=0-1",
+      "/o/gone/archive/refs/heads/master.zip": "bytes=0-1",
+    });
+  });
+
+  it("passes an upstream 416 and its Content-Range through instead of 502", async () => {
+    const unsatisfiable = () =>
+      new Response(null, {
+        status: 416,
+        statusText: "Range Not Satisfiable",
+        headers: { "Content-Range": "bytes */10" },
+      });
+    route(is("https://github.com/o/r/archive/refs/heads/b.zip"), unsatisfiable);
+    route(is("https://gitlab.com/g/p/x.zip"), unsatisfiable);
+
+    const init = { headers: { Range: "bytes=20-" } };
+    for (const response of [
+      await call("?repo=o/r&branch=b", init),
+      await proxied("https://gitlab.com/g/p/x.zip", init),
+    ]) {
+      const body = await expectJsonError(response, 416, /Upstream/u);
+      assert.equal(body.status, 416);
+      assert.equal(response.headers.get("Content-Range"), "bytes */10");
+    }
+  });
 });
 
 describe("zip-proxy worker: release assets", () => {
