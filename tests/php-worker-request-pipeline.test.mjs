@@ -324,7 +324,12 @@ describe("php-worker request pipeline", () => {
     crashOnce(fatal());
     const response = await send({ url: "https://example.test/early" });
     assert.equal(response.status, 500);
-    assert.match(response.text, /Runtime restart limit reached\./);
+    // The early-crash guard declined, not the restart limit (#181).
+    assert.doesNotMatch(response.text, /restart limit reached/);
+    assert.match(
+      response.text,
+      /crashed after only \d requests \(minimum 10\)/,
+    );
     const messages = shellSince(mark);
     assert.ok(
       messages.some((m) => m.detail.includes("[snapshot] saved DB (3 bytes)")),
@@ -332,7 +337,7 @@ describe("php-worker request pipeline", () => {
     );
     assert.ok(
       messages.some((m) =>
-        /crash after only \d requests \(minimum 10\)/.test(m.detail),
+        /crashed after only \d requests \(minimum 10\)/.test(m.detail),
       ),
     );
     assert.equal(runtimes.length, bootsBefore, "no reboot was attempted");
@@ -618,23 +623,14 @@ describe("php-worker request pipeline", () => {
     h.bootstrapError = null;
   });
 
-  it("reports a runtime that crashes while booting and recovers", async () => {
-    // The failed bootstrap above cleared the runtime; this boot crashes.
+  it("retries the boot after it fails before bootstrapping", async () => {
+    // The failed bootstrap above cleared the runtime; this boot crashes in
+    // php.refresh(), outside bootstrapFacturaScripts() (#181).
     h.refreshError = fatal("unreachable executed");
-    const mark = shell.length;
     const first = await send({ url: "https://example.test/boot-crash" });
     assert.equal(first.status, 500);
-    assert.ok(
-      shellSince(mark).some(
-        (m) =>
-          m.detail ===
-          "[runtime] snapshot hydration failed: unreachable executed",
-      ),
-    );
 
-    for (let i = 0; i < 8; i += 1) {
-      await send({ url: "https://example.test/boot-crash" });
-    }
+    // The failed boot is not cached: the very next request boots again.
     h.refreshError = null;
     h.handle = async () => new Response("booted");
     const recovered = await send({ url: "https://example.test/boot-crash" });
@@ -681,7 +677,10 @@ describe("php-worker request pipeline", () => {
       );
       if (limit) {
         assert.equal(response.status, 500);
-        assert.match(response.text, /Runtime restart limit reached\./);
+        assert.match(
+          response.text,
+          /Runtime restart limit reached \(20\/20\)\./,
+        );
       }
     }
     assert.ok(limit, "the twentieth restart is the last one");

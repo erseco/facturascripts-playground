@@ -96,21 +96,24 @@ function buildLoadingResponse(message, status = 503) {
   );
 }
 
+/**
+ * Rotate the runtime after a fatal crash, unless a guard declines it.
+ *
+ * @returns {string|null} null when restarted, otherwise why it was declined.
+ */
 function resetRuntime(reason) {
+  let declined = null;
   if (reactiveRestartCount >= MAX_REACTIVE_RESTARTS) {
-    postShell({
-      kind: "error",
-      detail: `[runtime] restart limit reached (${reactiveRestartCount}/${MAX_REACTIVE_RESTARTS}), not restarting. Reason: ${reason}`,
-    });
-    return false;
+    declined = `Runtime restart limit reached (${reactiveRestartCount}/${MAX_REACTIVE_RESTARTS}).`;
+  } else if (requestCount < MIN_REQUESTS_BEFORE_RESTART) {
+    declined = `Runtime not restarted: it crashed after only ${requestCount} requests (minimum ${MIN_REQUESTS_BEFORE_RESTART}), likely a fundamental bug.`;
   }
-
-  if (requestCount < MIN_REQUESTS_BEFORE_RESTART) {
+  if (declined) {
     postShell({
       kind: "error",
-      detail: `[runtime] crash after only ${requestCount} requests (minimum ${MIN_REQUESTS_BEFORE_RESTART}), likely a fundamental bug — not restarting. Reason: ${reason}`,
+      detail: `[runtime] ${declined} Reason: ${reason}`,
     });
-    return false;
+    return declined;
   }
 
   reactiveRestartCount += 1;
@@ -125,7 +128,7 @@ function resetRuntime(reason) {
     progress: 0.01,
   });
 
-  return true;
+  return null;
 }
 
 async function getRuntimeState() {
@@ -133,7 +136,7 @@ async function getRuntimeState() {
     return runtimeStatePromise;
   }
 
-  runtimeStatePromise = (async () => {
+  const bootPromise = (async () => {
     const config = await loadPlaygroundConfig();
     const runtime =
       config.runtimes.find((entry) => entry.id === runtimeId) ||
@@ -215,22 +218,16 @@ async function getRuntimeState() {
       publishProgress("Bootstrapping FacturaScripts", detail, progress);
     };
 
-    let bootstrapState;
-    try {
-      bootstrapState = await bootstrapFacturaScripts({
-        config,
-        blueprint: activeBlueprint,
-        clean: forceCleanBoot,
-        coreVersion,
-        corePrefetch,
-        php,
-        publish,
-        runtimeId,
-      });
-    } catch (error) {
-      runtimeStatePromise = null;
-      throw error;
-    }
+    const bootstrapState = await bootstrapFacturaScripts({
+      config,
+      blueprint: activeBlueprint,
+      clean: forceCleanBoot,
+      coreVersion,
+      corePrefetch,
+      php,
+      publish,
+      runtimeId,
+    });
 
     postShell({
       kind: "ready",
@@ -247,7 +244,16 @@ async function getRuntimeState() {
     return readyState;
   })();
 
-  return runtimeStatePromise;
+  // Never cache a failed boot, whichever step failed: the next request retries.
+  // Only clear it if no restart has replaced it in the meantime.
+  runtimeStatePromise = bootPromise;
+  bootPromise.catch(() => {
+    if (runtimeStatePromise === bootPromise) {
+      runtimeStatePromise = null;
+    }
+  });
+
+  return bootPromise;
 }
 
 async function executePhpRequest(state, serializedRequest) {
@@ -372,7 +378,8 @@ function installBridgeListener() {
           });
         }
 
-        const didReset = resetRuntime(`fatal WASM error: ${error.message}`);
+        const declined = resetRuntime(`fatal WASM error: ${error.message}`);
+        const didReset = declined === null;
         const canReplay = isSafeToReplay(data.request);
 
         if (isRetry || !canReplay || !didReset) {
@@ -382,7 +389,7 @@ function installBridgeListener() {
             ? `Runtime crashed again on retry. Manual reload required.\n\n${detail}`
             : !canReplay
               ? `Runtime restarting after crash. Non-idempotent request was not retried.\n\n${detail}`
-              : `Runtime restart limit reached.\n\n${detail}`;
+              : `${declined}\n\n${detail}`;
           await respondError(data.id, message, status);
           await bootAfterUnreplayedCrash({
             didReset,
