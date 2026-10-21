@@ -362,6 +362,7 @@ function rewriteHtmlAttributeUrl(rawValue, { origin, scopeId, runtimeId }) {
       return absolutePath;
     }
 
+    // A same-origin blob: URL's pathname is its inner URL, not a path.
     if (!absolute.pathname.startsWith("/")) {
       return decodedValue;
     }
