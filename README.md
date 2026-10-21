@@ -35,7 +35,7 @@ La configuracion base esta en [playground.config.json](playground.config.json).
 
 ## Requisitos
 
-- Node.js 18+
+- Node.js 24+
 - npm
 - Composer
 - Git

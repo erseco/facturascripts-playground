@@ -2,7 +2,7 @@
 
 ## Requisitos
 
-- Node.js 18+
+- Node.js 24+
 - npm
 - Composer
 - Git
