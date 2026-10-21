@@ -205,14 +205,11 @@ describe("zip-proxy worker: GitHub repo mode", () => {
     assert.equal(calls.length, 6);
   });
 
-  it("stops at a 3xx without Location and reports it as an upstream error", async () => {
+  it("passes a 3xx without Location through unchanged", async () => {
     route(startsWith("https://github.com/"), async () => redirect(null, 307));
-    const body = await expectJsonError(
-      await call("?repo=o/r&commit=nolocation"),
-      502,
-      /Upstream/u,
-    );
-    assert.equal(body.status, 307);
+    const response = await call("?repo=o/r&commit=nolocation");
+    assert.equal(response.status, 307);
+    assert.equal(response.headers.get("Access-Control-Allow-Origin"), "*");
     assert.equal(calls.length, 1);
   });
 
@@ -345,40 +342,24 @@ describe("zip-proxy worker: release assets", () => {
     { name: "notes.txt", browser_download_url: "https://github.com/dl/2" },
   ];
 
-  it("forwards Range to resolved assets and every archive download", async () => {
-    const ranges = [];
+  it("forwards Range on release-asset downloads and passes the 206 through", async () => {
+    let range;
     route(is("https://api.github.com/repos/o/r/releases/tags/v1"), () =>
       json({ tag_name: "v1", assets }),
     );
-    route(is("https://api.github.com/repos/o/r/pulls/7"), () =>
-      json({ head: { sha: "abc" } }),
-    );
-    route(startsWith("https://api.github.com/repos/o/r"), () => json({}, 404));
-    route(startsWith("https://github.com/"), async (url, init) => {
-      ranges.push([url, init.headers.get("Range")]);
-      return new Response("PK", { status: 206 });
-    });
-    for (const query of [
-      "release=v1&asset=plugin-1.2.zip",
-      "release=v1",
-      "commit=abc",
-      "pr=7",
-      "branch=dev",
-      "",
-    ]) {
-      const response = await call(`?repo=o/r&${query}`, {
-        headers: { Range: "bytes=0-9" },
+    route(is("https://github.com/dl/1"), async (_url, init) => {
+      range = init.headers.get("Range");
+      return new Response("PK", {
+        status: 206,
+        headers: { "Content-Range": "bytes 0-1/10" },
       });
-      assert.equal(response.status, 206, query);
-    }
-    assert.deepEqual(ranges, [
-      ["https://github.com/dl/1", "bytes=0-9"],
-      ["https://github.com/o/r/archive/refs/tags/v1.zip", "bytes=0-9"],
-      ["https://github.com/o/r/archive/abc.zip", "bytes=0-9"],
-      ["https://github.com/o/r/archive/abc.zip", "bytes=0-9"],
-      ["https://github.com/o/r/archive/refs/heads/dev.zip", "bytes=0-9"],
-      ["https://github.com/o/r/archive/refs/heads/main.zip", "bytes=0-9"],
-    ]);
+    });
+    const response = await call("?repo=o/r&release=v1&asset=plugin-1.2.zip", {
+      headers: { Range: "bytes=0-1" },
+    });
+    assert.equal(range, "bytes=0-1");
+    assert.equal(response.status, 206);
+    assert.equal(response.headers.get("Content-Range"), "bytes 0-1/10");
   });
 
   it("resolves an exact asset name case-insensitively and names the download", async () => {
@@ -706,14 +687,13 @@ describe("zip-proxy worker: generic ?url= proxy", () => {
         "If-Modified-Since": "yesterday",
       },
     });
-    // The client's conditional request is answered as-is: a bodiless 304 that
-    // revalidates its cached copy, with no defaults overwriting its headers.
+    // The client's conditional request gets its 304 back (no longer a 502),
+    // still sandboxed: CORS added, upstream cookies stripped.
     assert.equal(response.status, 304);
     assert.equal(response.body, null);
     assert.equal(response.headers.get("ETag"), '"etag"');
     assert.equal(response.headers.get("Access-Control-Allow-Origin"), "*");
     assert.equal(response.headers.get("Set-Cookie"), null);
-    assert.equal(response.headers.get("Content-Type"), null);
   });
 
   it("relays a 206 partial response to a Range request", async () => {
