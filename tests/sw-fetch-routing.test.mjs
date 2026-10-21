@@ -630,6 +630,35 @@ describe("sw.js addon proxy", () => {
     // The override is cleared and the config names no proxy.
     assert.equal(response.status, 502);
   });
+
+  it("does not trust an origin-root remote.html under an app subpath", async () => {
+    await loadServiceWorker(`${ORIGIN}/fs-playground/`);
+    harness.fetchImpl = async () => Response.json({});
+    const message = harness.listeners.get("message");
+    const proxyRequest = () =>
+      dispatchFetch(
+        makeRequest(`${ORIGIN}/fs-playground/__playground_proxy__?url=z`),
+      );
+    // Another app sharing the origin (e.g. GitHub Pages) at /remote.html.
+    message({
+      data: {
+        kind: "configure-service-worker",
+        addonProxyUrl: "https://evil.test/",
+      },
+      source: { url: `${ORIGIN}/remote.html` },
+    });
+    assert.equal((await proxyRequest()).status, 502);
+
+    message({
+      data: {
+        kind: "configure-service-worker",
+        addonProxyUrl: "https://ok.test/",
+      },
+      source: { url: `${ORIGIN}/fs-playground/remote.html?scope=s` },
+    });
+    await proxyRequest();
+    assert.equal(harness.fetchCalls.at(-1).input, "https://ok.test/?url=z");
+  });
 });
 
 describe("sw.js under an app subpath", () => {

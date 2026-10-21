@@ -429,10 +429,13 @@ function forwardToPhpWorker({ serializedRequest, runtimeId, scopeId }) {
 
 // Only the remote host page may reconfigure the worker. FacturaScripts pages
 // and any HTML they render share this origin, so without this check they could
-// reroute every addon download through their own proxy.
+// reroute every addon download through their own proxy. Match the full path:
+// stripAppBasePath() leaves paths outside the app base unchanged, so on a
+// subpath deployment it would also trust a same-origin /remote.html at the
+// origin root (shared by every repository on GitHub Pages).
 function isRemoteHostClient(source) {
   try {
-    return stripAppBasePath(new URL(source?.url).pathname) === "/remote.html";
+    return new URL(source?.url).pathname === withAppBasePath("/remote.html");
   } catch {
     return false;
   }
