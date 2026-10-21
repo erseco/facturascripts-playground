@@ -990,8 +990,14 @@ els.reset.addEventListener("click", () => {
   void updateFrame();
 });
 
+// A failed boot leaves no config or runtime to act on, so the UI stays locked
+// behind the fatal banner: unlocked, Home/Refresh would load
+// remote.html?runtime=undefined and Reset would throw. Reloading retries.
 main().catch((error) => {
-  setUiLocked(false);
+  setUiLocked(true);
   appendLog(formatErrorDetail(error), true);
+  showFatalBanner(
+    `The playground could not start: ${error?.message || error}. Reload the page to try again.`,
+  );
   captureException(error, { source: "shell-main" });
 });

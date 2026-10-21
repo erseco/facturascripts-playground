@@ -392,21 +392,42 @@ describe("shell boot", () => {
     assert.equal(shell.doc.querySelectorAll("#fatal-error-banner").length, 1);
   });
 
-  it("logs a boot failure and unlocks the UI", async () => {
+  it("keeps the UI locked behind a fatal banner when the config fails to load", async () => {
     const shell = await bootShell({ config: 500 });
     assert.match(
       shell.$("#log-panel .error").textContent,
       /Unable to load playground config: 500/u,
     );
-    assert.equal(shell.$("#address-input").disabled, false);
+    assert.match(
+      shell.$("#fatal-error-banner").textContent,
+      /could not start: Unable to load playground config: 500/u,
+    );
+    assert.equal(shell.$("#address-input").disabled, true);
+    assert.equal(shell.$("#reset-button").disabled, true);
     assert.equal(shell.registrations.length, 0);
 
-    // Without a config there is no runtime Service Worker to register, but
-    // the unlocked toolbar still re-points the frame.
+    // There is no runtime to point at: the toolbar stays inert instead of
+    // loading remote.html?runtime=undefined, and Reset does not throw.
+    for (const button of ["#home-button", "#refresh-button", "#reset-button"]) {
+      shell.click(button);
+    }
+    await settle();
+    assert.equal(shell.$("#site-frame").getAttribute("src"), null);
+    assert.equal(shell.registrations.length, 0);
+  });
+
+  it("keeps the UI locked when the blueprint fails to load", async () => {
+    const shell = await bootShell({
+      href: "https://play.test/app/index.html?scope=s1&blueprint-sid=gone",
+    });
+    assert.match(
+      shell.$("#fatal-error-banner").textContent,
+      /Stored blueprint not found/u,
+    );
+    assert.equal(shell.$("#address-input").disabled, true);
     shell.click("#home-button");
     await settle();
-    assert.equal(shell.registrations.length, 0);
-    assert.equal(shell.frameUrl().searchParams.get("path"), "/");
+    assert.equal(shell.$("#site-frame").getAttribute("src"), null);
   });
 
   it("refuses to capture PHP info before the config has loaded", async () => {
