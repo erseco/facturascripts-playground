@@ -309,6 +309,24 @@ describe("sw.js request routing", () => {
     assert.ok(html.includes('href="#&amp;quot;"'));
   });
 
+  it("leaves same-origin blob: URLs as written", async () => {
+    // A blob: URL carries the page origin, but its pathname is the inner URL
+    // ("https://…/id"), not a path, so it must not be scoped.
+    await loadServiceWorker();
+    replyWith({
+      status: 200,
+      statusText: "OK",
+      headers: { "content-type": "text/html" },
+      body: `<img src="blob:${ORIGIN}/0c1f-id"><a href="/Doc">d</a>`,
+    });
+    const response = await dispatchFetch(
+      makeRequest(`${ORIGIN}/playground/s1/php83/Dashboard`),
+    );
+    const html = await response.text();
+    assert.ok(html.includes(`src="blob:${ORIGIN}/0c1f-id"`));
+    assert.ok(html.includes('href="/playground/s1/php83/Doc"'));
+  });
+
   it("forwards a buffered POST body and rewrites same-origin redirects", async () => {
     await loadServiceWorker();
     replyWith({

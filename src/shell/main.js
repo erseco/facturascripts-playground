@@ -120,7 +120,6 @@ let serviceWorkerReady = null;
 let activeBlueprint;
 let remoteFrameBooted = false;
 let uiLocked = true;
-let remoteReloadToken = 0;
 let pendingCleanBoot = false;
 let pendingPersistenceFlush = null;
 let latestPhpInfoHtml = "";
@@ -291,9 +290,6 @@ async function updateFrame() {
   if (pendingCleanBoot) {
     url.searchParams.set("clean", "1");
   }
-  if (remoteReloadToken > 0) {
-    url.searchParams.set("reload", String(remoteReloadToken));
-  }
   remoteFrameBooted = false;
   pendingBootFrameLoad = true;
   els.frame.src = url.toString();
@@ -328,30 +324,6 @@ function navigateWithinRuntime(path) {
     return;
   }
 
-  void updateFrame();
-}
-
-// biome-ignore lint/correctness/noUnusedVariables: called via postToRemote from remote.html
-function refreshWithinRuntime() {
-  if (remoteFrameBooted && postToRemote({ kind: "refresh-site" })) {
-    appendLog(`Refreshing ${currentPath}`);
-    return;
-  }
-
-  void updateFrame();
-}
-
-function _restartRuntime() {
-  if (uiLocked) {
-    return;
-  }
-
-  remoteReloadToken = Date.now();
-  remoteFrameBooted = false;
-  serviceWorkerReady = null;
-  setUiLocked(true);
-  appendLog(`Restarting runtime for ${currentRuntimeId}`);
-  els.frame.src = "about:blank";
   void updateFrame();
 }
 
