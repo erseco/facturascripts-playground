@@ -1,5 +1,7 @@
 # FacturaScripts Playground
 
+[![Coverage](https://codecov.io/gh/erseco/facturascripts-playground/graph/badge.svg)](https://codecov.io/gh/erseco/facturascripts-playground)
+
 > FacturaScripts en el navegador con WebAssembly y sin servidor tradicional.
 
 FacturaScripts Playground ejecuta una instancia completa de [FacturaScripts](https://facturascripts.com) dentro del navegador usando [`@php-wasm/web`](https://www.npmjs.com/package/@php-wasm/web). El core se monta como bundle readonly y el estado mutable se guarda en el almacenamiento del navegador.
