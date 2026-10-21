@@ -493,7 +493,7 @@ describe("remote host commands and navigation", () => {
     return { frame, frameWindow, worker: env.workers[0] };
   }
 
-  it("navigates, refreshes and relays commands from the shell", async () => {
+  it("navigates and relays commands from the shell", async () => {
     const { frame, frameWindow, worker } = await bootReady();
 
     postFromShell({ kind: "navigate-site", path: "/ListCliente" });
@@ -507,8 +507,9 @@ describe("remote host commands and navigation", () => {
     postFromShell({ kind: "navigate-site", path: "/" });
     assert.equal(frameWindow.location.href, `${ORIGIN}/playground/s1/php83/`);
 
+    // refresh-site is gone: a reload could resubmit a page rendered from a POST.
     postFromShell({ kind: "refresh-site" });
-    assert.equal(frameWindow.reloads, 1);
+    assert.equal(frameWindow.reloads, 0);
 
     postFromShell({ kind: "capture-phpinfo" });
     postFromShell({ kind: "flush-persistence" });
@@ -525,7 +526,7 @@ describe("remote host commands and navigation", () => {
     assert.equal(frame.getAttribute("src"), `${ORIGIN}/playground/s1/php83/`);
   });
 
-  it("refreshes by assigning the source when the frame has no window", async () => {
+  it("leaves the source alone for the same target when the frame has no window", async () => {
     await boot();
     await waitFor(hostReady, "host ready");
     const frame = $("#remote-frame");
@@ -534,7 +535,6 @@ describe("remote host commands and navigation", () => {
       configurable: true,
     });
     postFromShell({ kind: "navigate-site", path: "/A" });
-    postFromShell({ kind: "refresh-site" });
     assert.equal(frame.getAttribute("src"), `${ORIGIN}/playground/s1/php83/A`);
     postFromShell({ kind: "navigate-site", path: "/A" });
     assert.equal(frame.getAttribute("src"), `${ORIGIN}/playground/s1/php83/A`);
