@@ -345,6 +345,42 @@ describe("zip-proxy worker: release assets", () => {
     { name: "notes.txt", browser_download_url: "https://github.com/dl/2" },
   ];
 
+  it("forwards Range to resolved assets and every archive download", async () => {
+    const ranges = [];
+    route(is("https://api.github.com/repos/o/r/releases/tags/v1"), () =>
+      json({ tag_name: "v1", assets }),
+    );
+    route(is("https://api.github.com/repos/o/r/pulls/7"), () =>
+      json({ head: { sha: "abc" } }),
+    );
+    route(startsWith("https://api.github.com/repos/o/r"), () => json({}, 404));
+    route(startsWith("https://github.com/"), async (url, init) => {
+      ranges.push([url, init.headers.get("Range")]);
+      return new Response("PK", { status: 206 });
+    });
+    for (const query of [
+      "release=v1&asset=plugin-1.2.zip",
+      "release=v1",
+      "commit=abc",
+      "pr=7",
+      "branch=dev",
+      "",
+    ]) {
+      const response = await call(`?repo=o/r&${query}`, {
+        headers: { Range: "bytes=0-9" },
+      });
+      assert.equal(response.status, 206, query);
+    }
+    assert.deepEqual(ranges, [
+      ["https://github.com/dl/1", "bytes=0-9"],
+      ["https://github.com/o/r/archive/refs/tags/v1.zip", "bytes=0-9"],
+      ["https://github.com/o/r/archive/abc.zip", "bytes=0-9"],
+      ["https://github.com/o/r/archive/abc.zip", "bytes=0-9"],
+      ["https://github.com/o/r/archive/refs/heads/dev.zip", "bytes=0-9"],
+      ["https://github.com/o/r/archive/refs/heads/main.zip", "bytes=0-9"],
+    ]);
+  });
+
   it("resolves an exact asset name case-insensitively and names the download", async () => {
     route(is("https://api.github.com/repos/o/r/releases/tags/v1"), () =>
       json({ tag_name: "v1", assets }),
@@ -395,14 +431,12 @@ describe("zip-proxy worker: release assets", () => {
     assert.deepEqual(body.available_assets, ["plugin-1.2.zip", "notes.txt"]);
   });
 
-  // Repo mode never hands the client request to proxyGitHubZip, so a Range
-  // header is not forwarded to the asset download.
-  it("falls back to the deterministic download URL (Range not forwarded)", async () => {
+  it("falls back to the deterministic download URL and forwards Range", async () => {
     route(startsWith("https://api.github.com/"), () => json({}, 404));
     route(
       is("https://github.com/o/r/releases/download/v%201/my%20file.zip"),
       async (_url, init) => {
-        assert.equal(init.headers.get("Range"), null);
+        assert.equal(init.headers.get("Range"), "bytes=0-9");
         return new Response("PK", { status: 206 });
       },
     );
@@ -659,7 +693,10 @@ describe("zip-proxy worker: generic ?url= proxy", () => {
       assert.equal(init.headers.get("Range"), "bytes=1-2");
       assert.equal(init.headers.get("If-None-Match"), '"etag"');
       assert.equal(init.headers.get("If-Modified-Since"), "yesterday");
-      return new Response(null, { status: 304 });
+      return new Response(null, {
+        status: 304,
+        headers: { ETag: '"etag"', "Set-Cookie": "s=1" },
+      });
     });
     const response = await proxied("https://cdn.jsdelivr.net/npm/x/file.js", {
       headers: {
@@ -669,8 +706,31 @@ describe("zip-proxy worker: generic ?url= proxy", () => {
         "If-Modified-Since": "yesterday",
       },
     });
-    // 304 is not ok and not a redirect status, so it is reported as an error.
-    assert.equal(response.status, 502);
+    // The client's conditional request is answered as-is: a bodiless 304 that
+    // revalidates its cached copy, with no defaults overwriting its headers.
+    assert.equal(response.status, 304);
+    assert.equal(response.body, null);
+    assert.equal(response.headers.get("ETag"), '"etag"');
+    assert.equal(response.headers.get("Access-Control-Allow-Origin"), "*");
+    assert.equal(response.headers.get("Set-Cookie"), null);
+    assert.equal(response.headers.get("Content-Type"), null);
+  });
+
+  it("relays a 206 partial response to a Range request", async () => {
+    route(
+      is("https://github.com/o/r/raw/main/a.zip"),
+      () =>
+        new Response("PK", {
+          status: 206,
+          headers: { "Content-Range": "bytes 0-1/9" },
+        }),
+    );
+    const response = await proxied("https://github.com/o/r/raw/main/a.zip", {
+      headers: { Range: "bytes=0-1" },
+    });
+    assert.equal(response.status, 206);
+    assert.equal(response.headers.get("Content-Range"), "bytes 0-1/9");
+    assert.equal(await response.text(), "PK");
   });
 
   it("names zip downloads and defaults their content type", async () => {

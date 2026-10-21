@@ -61,7 +61,7 @@ export default {
 
     // GitHub proxy mode
     if (params.has("repo")) {
-      return handleGitHubProxy(params, env);
+      return handleGitHubProxy(params, env, request);
     }
 
     // If the request accepts HTML (browser), serve the landing page.
@@ -101,7 +101,8 @@ export default {
 // GitHub proxy mode
 // ---------------------------------------------------------------------------
 
-async function handleGitHubProxy(params, env) {
+// `request` carries the client's Range header to every archive/asset download.
+async function handleGitHubProxy(params, env, request) {
   const repo = params.get("repo");
 
   // repo is interpolated into authenticated GitHub API paths, so accept only
@@ -139,20 +140,21 @@ async function handleGitHubProxy(params, env) {
       params.get("release"),
       params.get("asset"),
       env,
-      null,
+      request,
       params.get("asset-pattern"),
     );
   }
 
   // Full release ZIP
   if (params.has("release")) {
-    return handleReleaseZip(repo, params.get("release"), env);
+    return handleReleaseZip(repo, params.get("release"), env, request);
   }
 
   // Specific commit
   if (params.has("commit")) {
     return proxyGitHubZip(
       `${GITHUB_BASE}/${repo}/archive/${params.get("commit")}.zip`,
+      { request },
     );
   }
 
@@ -161,7 +163,7 @@ async function handleGitHubProxy(params, env) {
     if (!/^\d+$/u.test(params.get("pr"))) {
       return jsonResponse({ error: "Invalid pr. Use a PR number." }, 400);
     }
-    return handlePullRequest(repo, params.get("pr"), env);
+    return handlePullRequest(repo, params.get("pr"), env, request);
   }
 
   // Branch (or default branch)
@@ -170,6 +172,7 @@ async function handleGitHubProxy(params, env) {
   if (branch) {
     return proxyGitHubZip(
       `${GITHUB_BASE}/${repo}/archive/refs/heads/${branch}.zip`,
+      { request },
     );
   }
 
@@ -179,26 +182,30 @@ async function handleGitHubProxy(params, env) {
   if (defaultBranch) {
     return proxyGitHubZip(
       `${GITHUB_BASE}/${repo}/archive/refs/heads/${defaultBranch}.zip`,
+      { request },
     );
   }
 
   // The API could not resolve the default branch (rate-limited, or the
   // GITHUB_TOKEN is blocked for this repo by an org fine-grained-PAT policy).
   // Fall back to the conventional branch names instead of failing outright.
-  return proxyFirstAvailableZip([
-    `${GITHUB_BASE}/${repo}/archive/refs/heads/main.zip`,
-    `${GITHUB_BASE}/${repo}/archive/refs/heads/master.zip`,
-  ]);
+  return proxyFirstAvailableZip(
+    [
+      `${GITHUB_BASE}/${repo}/archive/refs/heads/main.zip`,
+      `${GITHUB_BASE}/${repo}/archive/refs/heads/master.zip`,
+    ],
+    request,
+  );
 }
 
 // Proxies the first candidate archive URL that resolves successfully, returning
 // the last failing response if none do. Used as a no-API fallback for
 // default-branch resolution.
-async function proxyFirstAvailableZip(urls) {
+async function proxyFirstAvailableZip(urls, request) {
   let lastResponse = null;
 
   for (const url of urls) {
-    const response = await proxyGitHubZip(url);
+    const response = await proxyGitHubZip(url, { request });
 
     if (response.status < 400) {
       return response;
@@ -320,7 +327,7 @@ async function proxyRawFile(repo, ref, rawPath) {
 // Pull request resolution
 // ---------------------------------------------------------------------------
 
-async function handlePullRequest(repo, prNumber, env) {
+async function handlePullRequest(repo, prNumber, env, request) {
   const apiUrl = `${GITHUB_API}/repos/${repo}/pulls/${prNumber}`;
   const data = await githubApiRequest(apiUrl, env);
 
@@ -331,17 +338,20 @@ async function handlePullRequest(repo, prNumber, env) {
     );
   }
 
-  return proxyGitHubZip(`${GITHUB_BASE}/${repo}/archive/${data.head.sha}.zip`);
+  return proxyGitHubZip(`${GITHUB_BASE}/${repo}/archive/${data.head.sha}.zip`, {
+    request,
+  });
 }
 
 // ---------------------------------------------------------------------------
 // Release ZIP resolution (source archive)
 // ---------------------------------------------------------------------------
 
-async function handleReleaseZip(repo, release, env) {
+async function handleReleaseZip(repo, release, env, request) {
   if (release !== "latest") {
     return proxyGitHubZip(
       `${GITHUB_BASE}/${repo}/archive/refs/tags/${release}.zip`,
+      { request },
     );
   }
 
@@ -364,6 +374,7 @@ async function handleReleaseZip(repo, release, env) {
 
   return proxyGitHubZip(
     `${GITHUB_BASE}/${repo}/archive/refs/tags/${data.tag_name}.zip`,
+    { request },
   );
 }
 
@@ -742,6 +753,10 @@ async function handleGenericProxy(targetUrl, request) {
       isAuthorizedRedirect,
     );
 
+    if (upstream.status === 304) {
+      return notModifiedResponse(upstream);
+    }
+
     if (!upstream.ok) {
       return upstreamErrorResponse(upstream);
     }
@@ -833,6 +848,22 @@ function upstreamErrorResponse(upstream, extra = {}) {
     },
     PASSTHROUGH_UPSTREAM_STATUSES.has(upstream.status) ? upstream.status : 502,
   );
+}
+
+// An upstream 304 answers the client's own If-None-Match / If-Modified-Since:
+// relay it bodiless (no cookies, no default Content-Type) so the browser
+// revalidates its cached copy instead of seeing a 502.
+function notModifiedResponse(upstream) {
+  const headers = new Headers(upstream.headers);
+
+  applyCorsHeaders(headers);
+  headers.delete("Set-Cookie");
+
+  return new Response(null, {
+    status: 304,
+    statusText: upstream.statusText,
+    headers,
+  });
 }
 
 // Maps a blocked redirect into a 400 response. A redirect into an
