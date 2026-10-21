@@ -88,8 +88,11 @@ after(async () => {
   await exited;
 });
 
-const proxy = (target, init) =>
-  fetch(`${base}/__addon_proxy__?url=${encodeURIComponent(target)}`, init);
+function proxy(target, init) {
+  const url = new URL("/__addon_proxy__", base);
+  url.searchParams.set("url", target);
+  return fetch(url, init);
+}
 
 describe("dev-server static files", () => {
   it("serves / as index.html with a no-store HTML response", async () => {

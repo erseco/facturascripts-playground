@@ -141,7 +141,10 @@ async function bootShell(options = {}) {
   });
   windows.push(win);
   const doc = win.document;
-  doc.body.innerHTML = BODY_MARKUP;
+  doc.body.replaceChildren(
+    ...new win.DOMParser().parseFromString(BODY_MARKUP, "text/html").body
+      .childNodes,
+  );
   for (const [key, value] of Object.entries(session)) {
     win.sessionStorage.setItem(key, value);
   }

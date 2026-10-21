@@ -139,7 +139,10 @@ function setup({
       disableCSSFileLoading: true,
     },
   });
-  window.document.body.innerHTML = REMOTE_BODY;
+  window.document.body.replaceChildren(
+    ...new window.DOMParser().parseFromString(REMOTE_BODY, "text/html").body
+      .childNodes,
+  );
   env = {
     window,
     channels: [],
