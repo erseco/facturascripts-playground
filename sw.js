@@ -303,16 +303,28 @@ function escapeHtml(str) {
     .replaceAll("'", "&#39;");
 }
 
+const NAMED_ATTRIBUTE_ENTITIES = new Map([
+  ["amp", "&"],
+  ["quot", "\""],
+  ["apos", "'"],
+  ["lt", "<"],
+  ["gt", ">"],
+  ["sol", "/"],
+  ["colon", ":"],
+]);
+
+// One pass, so the "&" an entity decodes to never starts another entity:
+// "&amp;lt;" is the text "&lt;", not "<".
 function decodeHtmlAttributeEntities(value) {
-  return value
-    .replace(/&#x([0-9a-f]+);/giu, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
-    .replace(/&#([0-9]+);/gu, (_, dec) => String.fromCodePoint(Number.parseInt(dec, 10)))
-    .replaceAll("&amp;", "&")
-    .replaceAll("&quot;", "\"")
-    .replaceAll("&#39;", "'")
-    .replaceAll("&apos;", "'")
-    .replaceAll("&sol;", "/")
-    .replaceAll("&colon;", ":");
+  return value.replace(
+    /&(?:#[xX]([0-9a-fA-F]+)|#([0-9]+)|(amp|quot|apos|lt|gt|sol|colon));/gu,
+    (_, hex, dec, name) => {
+      if (name) {
+        return NAMED_ATTRIBUTE_ENTITIES.get(name);
+      }
+      return String.fromCodePoint(hex ? Number.parseInt(hex, 16) : Number.parseInt(dec, 10));
+    },
+  );
 }
 
 function rewriteHtmlAttributeUrl(rawValue, { origin, scopeId, runtimeId }) {

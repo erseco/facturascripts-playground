@@ -284,6 +284,31 @@ describe("sw.js request routing", () => {
     assert.equal(harness.timers[0].delay, 180000);
   });
 
+  it("decodes attribute entities once and escapes them once", async () => {
+    await loadServiceWorker();
+    replyWith({
+      status: 200,
+      statusText: "OK",
+      headers: { "content-type": "text/html" },
+      body:
+        '<a href="/ListCliente?q=&lt;b&gt;">s</a>' +
+        '<a href="https://other.test/?q=&lt;b&gt;">o</a>' +
+        '<tr data-href="#&amp;lt;x&amp;gt;"></tr>' +
+        '<a href="#&amp;quot;">q</a>',
+    });
+    const response = await dispatchFetch(
+      makeRequest(`${ORIGIN}/playground/s1/php83/Dashboard`),
+    );
+    const html = await response.text();
+    assert.ok(
+      html.includes('href="/playground/s1/php83/ListCliente?q=%3Cb%3E"'),
+    );
+    assert.ok(html.includes('href="https://other.test/?q=&lt;b&gt;"'));
+    // An escaped "&" stays one literal "&": its text is not decoded again.
+    assert.ok(html.includes('data-href="#&amp;lt;x&amp;gt;"'));
+    assert.ok(html.includes('href="#&amp;quot;"'));
+  });
+
   it("forwards a buffered POST body and rewrites same-origin redirects", async () => {
     await loadServiceWorker();
     replyWith({
