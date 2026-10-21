@@ -2,10 +2,10 @@ PORT ?= 8085
 FS_REF ?= https://github.com/erseco/facturascripts.git
 FS_REF_BRANCH ?= feature/add-sqlite-support
 
-.PHONY: help up deps build-version prepare bundle serve test test-e2e lint format clean reset sqlite-branch
+.PHONY: help up deps build-version prepare bundle serve test coverage test-e2e lint format clean reset sqlite-branch
 
 help:
-	@printf '%s\n' 'FacturaScripts Playground Make targets:' '' '  make deps      Install npm dependencies' '  make prepare   Sync browser deps and prepare runtime assets' '  make bundle    Build the readonly FacturaScripts bundle' '  make serve     Start the local dev server' '  make up        Run bundle + serve' '  make test      Run unit tests' '  make test-e2e  Run Playwright browser tests' '  make lint      Run Biome linter' '  make format    Auto-fix lint and formatting issues' '  make clean     Remove generated caches and bundle artifacts' '  make reset     Alias of clean plus cache reset' '' 'Common overrides:' '  PORT=9090 make serve' '  FS_REF=<repo> FS_REF_BRANCH=<branch> make bundle'
+	@printf '%s\n' 'FacturaScripts Playground Make targets:' '' '  make deps      Install npm dependencies' '  make prepare   Sync browser deps and prepare runtime assets' '  make bundle    Build the readonly FacturaScripts bundle' '  make serve     Start the local dev server' '  make up        Run bundle + serve' '  make test      Run unit tests' '  make coverage  Run unit tests with lcov coverage' '  make test-e2e  Run Playwright browser tests' '  make lint      Run Biome linter' '  make format    Auto-fix lint and formatting issues' '  make clean     Remove generated caches and bundle artifacts' '  make reset     Alias of clean plus cache reset' '' 'Common overrides:' '  PORT=9090 make serve' '  FS_REF=<repo> FS_REF_BRANCH=<branch> make bundle'
 
 deps:
 	npm install
@@ -30,6 +30,13 @@ sqlite-branch:
 # (and the modules they import) expect it to exist.
 test: build-version
 	node --test tests/*.test.mjs
+
+coverage: build-version
+	mkdir -p coverage
+	node --test --experimental-test-coverage \
+		--test-reporter=spec --test-reporter-destination=stdout \
+		--test-reporter=lcov --test-reporter-destination=coverage/lcov.info \
+		tests/*.test.mjs
 
 test-e2e:
 	npm run test:e2e
