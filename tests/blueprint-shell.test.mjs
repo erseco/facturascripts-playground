@@ -155,9 +155,12 @@ describe("blueprint helpers with a window", () => {
   });
 
   it("stashes blueprints whose inline URL would be too long", async () => {
-    const noise = Array.from({ length: 12000 }, () =>
-      Math.floor(Math.random() * 36).toString(36),
-    ).join("");
+    // Deterministic but incompressible: gzip must not shrink it under the limit.
+    let seed = 1;
+    const noise = Array.from({ length: 12000 }, () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return (seed % 36).toString(36);
+    }).join("");
     const blueprint = { meta: { description: noise } };
     const result = await buildBlueprintBootHref(
       "https://play.test/app/?blueprint=old&blueprint-url=x&blueprint-data=y&scope=s",

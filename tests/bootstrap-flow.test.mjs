@@ -63,7 +63,7 @@ function createFakePhp(routes = {}) {
     async request(request) {
       const path = new URL(request.url).pathname;
       php.requests.push(path);
-      const route = routes[path];
+      const route = new Map(Object.entries(routes)).get(path);
       if (route) return route();
       if (path === "/_playground_install.php")
         return new Response("INSTALL_OK");
@@ -124,7 +124,7 @@ describe("bootstrapFacturaScripts", () => {
 
     const configPhp = text(php, `${FS_ROOT}/config.php`);
     assert.match(configPhp, /define\('FS_LANG', 'es_ES'\);/);
-    assert.match(configPhp, new RegExp(`FS_DB_NAME', '${PLAYGROUND_DB_PATH}'`));
+    assert.ok(configPhp.includes(`FS_DB_NAME', '${PLAYGROUND_DB_PATH}'`));
     const ini = text(php, "/php.ini");
     assert.match(ini, /date\.timezone = Europe\/Madrid/);
     assert.match(ini, /display_errors = Off/);
