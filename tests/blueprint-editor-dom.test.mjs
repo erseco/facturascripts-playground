@@ -67,9 +67,22 @@ const CONFIG = {
 };
 const getConfig = () => CONFIG;
 const windows = [];
+// Drains work that only needs the microtask queue (the stubbed clipboard, the
+// data: CodeJar module, the rejected CDN import).
 const settle = async () => {
   for (let i = 0; i < 10; i += 1) {
     await new Promise((resolve) => setImmediate(resolve));
+  }
+};
+// Gzip runs on the libuv threadpool, so on a loaded machine it can take any
+// number of event-loop turns: poll for the outcome against a deadline.
+const waitFor = async (predicate, label, timeoutMs = 5000) => {
+  const deadline = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() > deadline) {
+      throw new Error(`Timed out waiting for ${label}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
   }
 };
 
@@ -159,11 +172,12 @@ describe("blueprint editor (fallback textarea)", () => {
       text: '{"landingPage":"/Run"}',
     });
     initBlueprintEditor(elements, { location, getConfig });
+    const initialHref = location.href;
     $("run").dispatchEvent(new win.Event("click"));
     assert.equal($("run").disabled, true);
     assert.equal($("status").classList.contains("is-running"), true);
     assert.match($("status").textContent, /Encoding blueprint/u);
-    await settle();
+    await waitFor(() => location.href !== initialHref, "the boot URL");
     const target = new URL(location.href);
     assert.equal(target.searchParams.get("scope"), "s1");
     assert.ok(target.searchParams.get("blueprint"));
