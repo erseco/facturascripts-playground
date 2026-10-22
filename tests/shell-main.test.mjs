@@ -295,10 +295,8 @@ describe("shell boot", () => {
     assert.equal(shell.registrations.length, 1);
     const { url, opts } = shell.registrations[0];
     assert.ok(url.pathname.endsWith("/sw.bundle.js"));
-    assert.equal(url.searchParams.get("v"), BUILD_VERSION);
-    assert.equal(url.searchParams.get("scope"), "s1");
-    assert.equal(url.searchParams.get("runtime"), "php83");
-    assert.equal(url.searchParams.get("core"), "2025");
+    // Issue #196: only the build versions the worker script.
+    assert.deepEqual([...url.searchParams], [["v", BUILD_VERSION]]);
     assert.deepEqual(opts, { scope: "./", updateViaCache: "none" });
 
     const frameUrl = shell.frameUrl();
@@ -833,9 +831,10 @@ describe("shell runtime configuration", () => {
     assert.equal(shell.$("#runtime-id-value").textContent, "php84");
     assert.equal(shell.replaced.length, 1);
     assert.equal(shell.registrations.length, 2);
+    // Issue #196: a runtime switch keeps the same worker script.
     assert.equal(
-      shell.registrations[1].url.searchParams.get("runtime"),
-      "php84",
+      shell.registrations[1].url.href,
+      shell.registrations[0].url.href,
     );
     const frameUrl = shell.frameUrl();
     assert.equal(frameUrl.searchParams.get("runtime"), "php84");

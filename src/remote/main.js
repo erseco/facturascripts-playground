@@ -9,8 +9,8 @@ import {
   isServiceWorkerSupported,
   isServiceWorkerUnsupportedError,
   registerClassicServiceWorker,
-  SERVICE_WORKER_SCRIPT,
   SERVICE_WORKER_UNSUPPORTED_MESSAGE,
+  serviceWorkerScriptUrl,
 } from "../shared/service-worker-support.js";
 import { saveSessionState } from "../shared/storage.js";
 
@@ -74,7 +74,7 @@ function emit(scopeId, message) {
   channel.close();
 }
 
-async function registerRuntimeServiceWorker(scopeId, runtimeId, coreVersion) {
+async function registerRuntimeServiceWorker() {
   // Probe before touching the API: `navigator.serviceWorker` is undefined in
   // iOS Safari private browsing and in non-secure contexts.
   if (!isServiceWorkerSupported()) {
@@ -85,13 +85,9 @@ async function registerRuntimeServiceWorker(scopeId, runtimeId, coreVersion) {
     return navigator.serviceWorker.ready;
   }
 
-  const swUrl = new URL(`../../${SERVICE_WORKER_SCRIPT}`, import.meta.url);
-  swUrl.searchParams.set("v", BUILD_VERSION);
-  swUrl.searchParams.set("scope", scopeId);
-  swUrl.searchParams.set("runtime", runtimeId);
-  swUrl.searchParams.set("core", coreVersion);
-
-  const registration = await registerClassicServiceWorker(swUrl);
+  const registration = await registerClassicServiceWorker(
+    serviceWorkerScriptUrl(new URL("../../", import.meta.url)),
+  );
 
   await navigator.serviceWorker?.ready;
   return registration;
@@ -265,7 +261,7 @@ async function bootstrapRemote() {
     progress: 0.08,
   });
 
-  await registerRuntimeServiceWorker(scopeId, runtime.id, coreVersion);
+  await registerRuntimeServiceWorker();
   await waitForServiceWorkerControl();
   setRemoteProgress("Service Worker ready and controlling this tab.", 0.12);
 

@@ -31,8 +31,8 @@ import {
   isServiceWorkerSupported,
   isServiceWorkerUnsupportedError,
   registerClassicServiceWorker,
-  SERVICE_WORKER_SCRIPT,
   SERVICE_WORKER_UNSUPPORTED_MESSAGE,
+  serviceWorkerScriptUrl,
 } from "../shared/service-worker-support.js";
 import {
   clearScopeSession,
@@ -240,15 +240,9 @@ async function ensureRuntimeServiceWorker() {
     throw createServiceWorkerUnsupportedError();
   }
 
-  const swUrl = new URL(`../../${SERVICE_WORKER_SCRIPT}`, import.meta.url);
-  // Cache-bust the SW by the per-build worker-bundle hash so a redeploy is
-  // always picked up (the old static config.bundleVersion was manual).
-  swUrl.searchParams.set("v", BUILD_VERSION);
-  swUrl.searchParams.set("scope", scopeId);
-  swUrl.searchParams.set("runtime", currentRuntimeId);
-  swUrl.searchParams.set("core", currentCoreVersion);
-
-  await registerClassicServiceWorker(swUrl);
+  await registerClassicServiceWorker(
+    serviceWorkerScriptUrl(new URL("../../", import.meta.url)),
+  );
   await navigator.serviceWorker?.ready;
 
   if (!navigator.serviceWorker?.controller) {

@@ -248,10 +248,11 @@ describe("remote host boot", () => {
 
     const registration = env.sw.container.registrations[0];
     assert.ok(registration.url.pathname.endsWith("/sw.bundle.js"));
-    assert.equal(registration.url.searchParams.get("v"), BUILD_VERSION);
-    assert.equal(registration.url.searchParams.get("scope"), "s1");
-    assert.equal(registration.url.searchParams.get("runtime"), "php83");
-    assert.equal(registration.url.searchParams.get("core"), "2025.1");
+    // Issue #196: only the build versions the worker script.
+    assert.deepEqual(
+      [...registration.url.searchParams],
+      [["v", BUILD_VERSION]],
+    );
     assert.deepEqual(registration.options, {
       scope: "./",
       updateViaCache: "none",

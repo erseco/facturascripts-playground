@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
+import { BUILD_VERSION } from "../src/generated/build-version.js";
 import {
   createServiceWorkerUnsupportedError,
   isServiceWorkerSupported,
@@ -8,6 +9,7 @@ import {
   SERVICE_WORKER_SCRIPT,
   SERVICE_WORKER_UNSUPPORTED_ERROR_NAME,
   SERVICE_WORKER_UNSUPPORTED_MESSAGE,
+  serviceWorkerScriptUrl,
   shouldInterceptRequest,
 } from "../src/shared/service-worker-support.js";
 
@@ -133,6 +135,19 @@ describe("registerClassicServiceWorker", () => {
         new URL("https://example.test/sw.bundle.js"),
       ),
       (error) => isServiceWorkerUnsupportedError(error),
+    );
+  });
+});
+
+// Issue #196: scope/runtime/core in the script URL made every new scope or
+// runtime register a different script, which installed a new worker under
+// the other open tabs. sw.js reads none of them; only the build matters.
+describe("serviceWorkerScriptUrl", () => {
+  it("points at the root sw.bundle.js and carries only the build", () => {
+    const url = serviceWorkerScriptUrl("https://example.test/app/");
+    assert.equal(
+      url.href,
+      `https://example.test/app/${SERVICE_WORKER_SCRIPT}?v=${BUILD_VERSION}`,
     );
   });
 });

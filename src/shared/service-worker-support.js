@@ -1,3 +1,5 @@
+import { BUILD_VERSION } from "../generated/build-version.js";
+
 // Service Worker availability probe.
 //
 // `navigator.serviceWorker` is undefined in iOS Safari private browsing, in a
@@ -42,6 +44,18 @@ export function isServiceWorkerUnsupportedError(error) {
 // script evaluation". The build bundles sw.js into this classic script at the
 // site root (a Service Worker's maximum scope is its own directory).
 export const SERVICE_WORKER_SCRIPT = "sw.bundle.js";
+
+/**
+ * The worker script URL, versioned only by the build. sw.js reads no query
+ * parameter, and a per-scope or per-runtime one gave each tab a different
+ * script, so opening a new scope replaced the worker of every open tab.
+ * `appRootUrl` is the app's base directory URL (where sw.bundle.js lives).
+ */
+export function serviceWorkerScriptUrl(appRootUrl) {
+  const url = new URL(SERVICE_WORKER_SCRIPT, appRootUrl);
+  url.searchParams.set("v", BUILD_VERSION);
+  return url;
+}
 
 /** Register the runtime Service Worker as a classic script for scope "./". */
 export async function registerClassicServiceWorker(swUrl) {

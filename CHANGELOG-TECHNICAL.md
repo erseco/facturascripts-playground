@@ -6,6 +6,24 @@ are the way they are and avoid re-investigating solved problems.
 
 ---
 
+## Service Worker script URL depends only on the build
+
+**Date:** 2026-10-22
+**Context:** erseco/facturascripts-playground#196 (same bug as
+ateeducacion/nextcloud-playground#140). The shell and the remote host
+registered `sw.bundle.js?v=…&scope=…&runtime=…&core=…`. `sw.js` reads none
+of those parameters, but a different script URL makes the browser install a
+new worker in the same registration, and `skipWaiting()` + `clients.claim()`
+activated it under every other open tab.
+**Decision:** both registration sites use `serviceWorkerScriptUrl()` in
+`src/shared/service-worker-support.js`, which versions the script with
+`v=BUILD_VERSION` only (as moodle-playground's
+`registerVersionedServiceWorker` does). A redeploy still replaces the worker;
+opening another scope or switching the PHP version does not. The e2e
+"a new scope reuses the Service Worker of the open tabs" covers it.
+
+---
+
 ## OPcache file cache on by default
 
 **Date:** 2026-10-19

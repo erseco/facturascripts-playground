@@ -156,3 +156,28 @@ test("distinct scopes remain independent across reload and Reset", async ({
   expect((await postOnce(second, other)).replies).toHaveLength(1);
   expect((await postOnce(page, scope)).replies).toHaveLength(1);
 });
+
+// Issue #196: each scope/runtime used to register a different script URL, so
+// opening one installed and activated a new worker under the other tabs.
+test("a new scope reuses the Service Worker of the open tabs", async ({
+  page,
+  context,
+}) => {
+  const activeScript = (target) =>
+    target.evaluate(async () => {
+      const registration = await navigator.serviceWorker.ready;
+      return registration.active.scriptURL;
+    });
+  await page.goto(`/?scope=sw-a-${crypto.randomUUID()}`);
+  await ready(page);
+  const before = await activeScript(page);
+
+  const second = await context.newPage();
+  await second.goto(`/?scope=sw-b-${crypto.randomUUID()}`);
+  await ready(second);
+
+  expect(await activeScript(second)).toBe(before);
+  expect(await activeScript(page)).toBe(before);
+  expect(new URL(before).searchParams.has("scope")).toBe(false);
+  await second.close();
+});
