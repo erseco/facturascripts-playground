@@ -120,6 +120,8 @@ let serviceWorkerReady = null;
 let activeBlueprint;
 let remoteFrameBooted = false;
 let uiLocked = true;
+// Set while the user types in the address bar, cleared on submit or blur.
+let addressEdited = false;
 let pendingCleanBoot = false;
 let pendingPersistenceFlush = null;
 let latestPhpInfoHtml = "";
@@ -294,6 +296,15 @@ async function updateFrame() {
   pendingBootFrameLoad = true;
   els.frame.src = url.toString();
   pendingCleanBoot = false;
+}
+
+// Show a path the site frame reported, unless the user is typing an address:
+// the toolbar unlocks before the landing page finishes loading, and that load
+// must not replace what the user typed.
+function showFramePath(path) {
+  if (!addressEdited) {
+    els.address.value = path;
+  }
 }
 
 function postToRemote(message) {
@@ -504,7 +515,7 @@ function bindShellChannel() {
           }
         }
         currentPath = nextPath;
-        els.address.value = currentPath;
+        showFramePath(currentPath);
         saveState({ lastReadyAt: new Date().toISOString() });
         // After bootstrap completes (autologin cookies set), re-navigate so the
         // frame loads with the correct session cookies instead of showing /login.
@@ -517,7 +528,7 @@ function bindShellChannel() {
         const nextPath = message.path || "/";
         recordBackEntry(currentPath, nextPath);
         currentPath = nextPath;
-        els.address.value = currentPath;
+        showFramePath(currentPath);
         saveState();
         break;
       }
@@ -908,11 +919,18 @@ els.copyLogs.addEventListener("click", () => {
 });
 els.refreshPhpInfoButton.addEventListener("click", requestPhpInfoCapture);
 
+els.address.addEventListener("input", () => {
+  addressEdited = true;
+});
+els.address.addEventListener("blur", () => {
+  addressEdited = false;
+});
 els.addressForm.addEventListener("submit", (event) => {
   event.preventDefault();
   if (uiLocked) {
     return;
   }
+  addressEdited = false;
   navigateWithinRuntime(els.address.value || "/");
 });
 

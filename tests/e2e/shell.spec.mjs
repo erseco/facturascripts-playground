@@ -300,3 +300,46 @@ test("persists /persist to IndexedDB and reboots from it on reload", async ({
   await page.reload();
   await waitForRuntimeReady(page);
 });
+
+test("keeps an address being typed when the site frame navigates", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForRuntimeReady(page);
+  const remote = page.frameLocator("#site-frame").frameLocator("#remote-frame");
+  await expect(remote.locator("body")).toContainText(/FacturaScripts|Panel/u);
+
+  // A page finishing its load in the frame reports its path to the shell.
+  // That must not replace what the user is typing: the toolbar unlocks on
+  // the worker's bootstrap "ready", before the landing page has loaded, so
+  // typing can overlap that load (ateeducacion/omeka-s-playground#236).
+  // AdminPlugins is used because it does not focus a field on load, as the
+  // list views' search box does.
+  await page.locator("#address-input").fill("/ListProducto");
+  await remote.locator("body").evaluate(() => {
+    const root = location.pathname.match(
+      /^(.*\/playground\/[^/]+\/[^/]+)\//u,
+    )[1];
+    location.assign(`${root}/AdminPlugins`);
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Object.keys(sessionStorage)
+          .filter((key) => key.endsWith(":state"))
+          .map((key) => JSON.parse(sessionStorage.getItem(key)).path),
+      ),
+    )
+    .toContain("/AdminPlugins");
+  await expect(page.locator("#address-input")).toHaveValue("/ListProducto");
+
+  await page.locator("#address-input").press("Enter");
+  await expect
+    .poll(() =>
+      page
+        .frame({ url: /\/playground\// })
+        ?.url()
+        .includes("/ListProducto"),
+    )
+    .toBe(true);
+});

@@ -674,6 +674,40 @@ describe("shell toolbar", () => {
     assert.equal(shell.posts.at(-1).message.path, "/");
   });
 
+  // ateeducacion/omeka-s-playground#236: the toolbar unlocks on the worker's
+  // bootstrap "ready", before the frame reports the landing page, so a frame
+  // report must not replace an address the user is typing.
+  it("keeps a typed address while the frame reports paths", async () => {
+    const shell = await bootShell();
+    await shell.booted();
+    const address = shell.$("#address-input");
+    address.value = "/ListProducto";
+    address.dispatchEvent(new shell.win.Event("input"));
+
+    shell.emit({ kind: "ready", path: "/Dashboard" });
+    shell.emit({ kind: "navigate", path: "/AdminPlugins" });
+    assert.equal(address.value, "/ListProducto");
+    const state = JSON.parse(
+      shell.win.sessionStorage.getItem("facturascripts-playground:s1:state"),
+    );
+    assert.equal(state.path, "/AdminPlugins");
+
+    // Submitting hands the address back to the frame.
+    shell
+      .$("#address-form")
+      .dispatchEvent(new shell.win.Event("submit", { cancelable: true }));
+    assert.equal(shell.posts.at(-1).message.path, "/ListProducto");
+    shell.emit({ kind: "navigate", path: "/EditProducto" });
+    assert.equal(address.value, "/EditProducto");
+
+    // So does leaving the field without submitting.
+    address.value = "/Draft";
+    address.dispatchEvent(new shell.win.Event("input"));
+    address.dispatchEvent(new shell.win.Event("blur"));
+    shell.emit({ kind: "navigate", path: "/ListCliente" });
+    assert.equal(address.value, "/ListCliente");
+  });
+
   it("reloads the frame when the runtime is not booted", async () => {
     const shell = await bootShell();
     shell.emit({ kind: "ready", bootstrapped: true, path: "/" });
