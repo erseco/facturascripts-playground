@@ -208,6 +208,26 @@ describe("fetchBundleWithCache", () => {
     assert.equal(store.size, 0);
   });
 
+  it("refetches past the HTTP cache when the downloaded bytes mismatch", async () => {
+    const { store } = fakeCaches();
+    // A deploy rebuilt the bundle at the same URL: the HTTP cache still holds
+    // the previous build while the manifest already advertises the new sha256.
+    const inits = [];
+    globalThis.fetch = async (_url, init) => {
+      inits.push(init);
+      const body = init?.cache === "reload" ? BYTES : new Uint8Array([6, 6]);
+      return new Response(body, {
+        headers: { "content-length": String(body.length) },
+      });
+    };
+
+    const bytes = await fetchBundleWithCache(MANIFEST);
+    assert.deepEqual([...bytes], [...BYTES]);
+    assert.equal(inits.length, 2, "one retry");
+    assert.equal(inits[1]?.cache, "reload", "retry bypasses the HTTP cache");
+    assert.deepEqual([...store.get(BUNDLE_URL)], [...BYTES]);
+  });
+
   it("falls back to the network when the Cache API is unavailable", async () => {
     const { log } = fakeCaches({ openFails: true });
     const urls = serveBytes(BYTES);
